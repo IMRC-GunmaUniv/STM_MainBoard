@@ -22,6 +22,8 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
+#include "imrc_ecan.h"
+#include "imrc_LD_220MG.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +45,8 @@
 CAN_HandleTypeDef hcan1;
 CAN_HandleTypeDef hcan2;
 
+TIM_HandleTypeDef htim2;
+
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
@@ -55,6 +59,7 @@ static void MX_GPIO_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -88,6 +93,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
+  
 
   /* USER CODE END Init */
 
@@ -103,51 +109,48 @@ int main(void)
   MX_CAN1_Init();
   MX_CAN2_Init();
   MX_USART3_UART_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-
-  HAL_CAN_Start(&hcan1);
-	HAL_CAN_ActivateNotification(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
-  HAL_CAN_Start(&hcan2);
-  HAL_CAN_ActivateNotification(&hcan2, CAN_IT_RX_FIFO0_MSG_PENDING);
   
-  printf("start!!\n\r");
+  //CAN Setting
+  ecan_init(1, 1); //MainBoard
+  ecan_setAllPassFilter(&hcan1);
+  ecan_setAllPassFilter(&hcan2);
+  ecan_start(&hcan1);
+  ecan_start(&hcan2);
+
+  //PWM
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
+
+  //Start sign
+  HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+  HAL_Delay(100);
+  HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+  printf("Start!!\n\r");
+  
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)  {
+    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 180);
+    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_2, 180);
+    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_3, 180);
+    HAL_Delay(1000);
 
-
-	CAN_TxHeaderTypeDef TxHeader;
-uint32_t TxMailbox;
-uint8_t TxData[8];
-if(0 < HAL_CAN_GetTxMailboxesFreeLevel(&hcan1)){
-  HAL_GPIO_TogglePin(CAN_LED1_GPIO_Port,CAN_LED1_Pin);
-
-  TxHeader.StdId = 0x555;                 // CAN ID
-  TxHeader.RTR = CAN_RTR_DATA;            // フレームタイプはデータフレーム
-  TxHeader.IDE = CAN_ID_STD;              // 標準ID(11ﾋﾞｯﾄ)
-  TxHeader.DLC = 8;                       // データ長は8バイトに
-  TxHeader.TransmitGlobalTime = DISABLE;  // ???
-  TxData[0] = 0x11;
-  TxData[1] = 0x22;
-  TxData[2] = 0x33;
-  TxData[3] = 0x44;
-  TxData[4] = 0x55;
-  TxData[5] = 0x66;
-  TxData[6] = 0x77;
-  TxData[7] = 0x88;
-  HAL_CAN_AddTxMessage(&hcan1, &TxHeader, TxData, &TxMailbox);
-
-  
-  HAL_GPIO_TogglePin(CAN_LED1_GPIO_Port,CAN_LED1_Pin);
-}
+    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 0);
+    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_2, 0);
+    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_3, 0);
+    HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
+
 
 /**
   * @brief System Clock Configuration
@@ -270,6 +273,63 @@ static void MX_CAN2_Init(void)
 }
 
 /**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 59;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 2499;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
+  HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
   * @brief USART3 Initialization Function
   * @param None
   * @retval None
@@ -327,8 +387,8 @@ static void MX_GPIO_Init(void)
                           |LED3_Pin|BZ_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_C2_Pin|GPIO_C3_Pin|GPIO_C4_Pin|GPIO_D1_Pin
-                          |GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin|LED1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_D1_Pin|GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin
+                          |LED1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LED4_Pin|CAN_LED2_Pin|CAN_LED1_Pin, GPIO_PIN_RESET);
@@ -344,10 +404,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_C2_Pin GPIO_C3_Pin GPIO_C4_Pin GPIO_D1_Pin
-                           GPIO_D2_Pin GPIO_D3_Pin GPIO_D4_Pin LED1_Pin */
-  GPIO_InitStruct.Pin = GPIO_C2_Pin|GPIO_C3_Pin|GPIO_C4_Pin|GPIO_D1_Pin
-                          |GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin|LED1_Pin;
+  /*Configure GPIO pins : GPIO_D1_Pin GPIO_D2_Pin GPIO_D3_Pin GPIO_D4_Pin
+                           LED1_Pin */
+  GPIO_InitStruct.Pin = GPIO_D1_Pin|GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin
+                          |LED1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -360,12 +420,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SW1_Pin SW2_Pin SW3_Pin SW4_Pin
-                           DIP4_Pin DIP3_Pin */
-  GPIO_InitStruct.Pin = SW1_Pin|SW2_Pin|SW3_Pin|SW4_Pin
-                          |DIP4_Pin|DIP3_Pin;
+  /*Configure GPIO pins : SW1_Pin SW2_Pin SW3_Pin SW4_Pin */
+  GPIO_InitStruct.Pin = SW1_Pin|SW2_Pin|SW3_Pin|SW4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PB10 */
@@ -374,6 +432,12 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF4_I2C2;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : DIP4_Pin DIP3_Pin */
+  GPIO_InitStruct.Pin = DIP4_Pin|DIP3_Pin;
+  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC6 PC7 */
@@ -456,9 +520,8 @@ void Error_Handler(void)
   __disable_irq();
   while (1)
   {
-    HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
-    HAL_Delay(200);
-
+    printf("Error\n\r");
+    HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,1);
   }
   /* USER CODE END Error_Handler_Debug */
 }
