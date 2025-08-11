@@ -175,9 +175,6 @@ int main(void)
     }else{
 
     }
-   
-
-
     
     /* USER CODE END WHILE */
 
@@ -566,12 +563,13 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
     id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
     ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
     //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
-  }
+  
 
-  if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
-    for (int i = 0; i < 8; i++){
-      data_ESP[i] = RxData1[i];
-      
+    if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
+      for (int i = 0; i < 8; i++){
+        data_ESP[i] = RxData1[i];
+
+      }
     }
   }
   
