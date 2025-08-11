@@ -22,10 +22,12 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stdio.h"
-#include "imrc_ecan.h"
-#include "imrc_LD_220MG.h"
 #include "stdlib.h"
 #include "stdbool.h"
+
+#include "imrc_ecan.h"
+#include "imrc_LD_220MG.h"
+#include "imrc_RU_control.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -92,6 +94,7 @@ int __io_putchar(int ch)
 
 void allBtnAxiState();
 bool getBtnState(uint8_t);
+
 /* USER CODE END Private
 /* USER CODE END 0 */
 
@@ -162,18 +165,38 @@ int main(void)
 
     if (getBtnState(Button_UP)){
       printf("up\n\r");
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
+      RU_control(&hcan1, 1, 1, 1);
+    }else{      
+      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); 
+      RU_control(&hcan1, 1, 1, 0);
+    }
 
-    }else if (getBtnState(Button_Down)){
+    if (getBtnState(Button_Down)){
       printf("Down\n\r");
-      
-    }else if (getBtnState(Button_Left)){
-      printf("Left\n\r");
-     
-    }else if (getBtnState(Button_Right)){
-      printf("Right\n\r");
-
+      HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+      RU_control(&hcan1, 1, 2, 1);     
     }else{
+      HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
+      RU_control(&hcan1, 1, 2, 0);
+    }
 
+    if (getBtnState(Button_Left)){
+      printf("Left\n\r");
+      HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+      RU_control(&hcan1, 1, 3, 1);   
+    }else{
+      HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+      RU_control(&hcan1, 1, 3, 0);
+    }
+  
+    if (getBtnState(Button_Right)){
+      printf("Right\n\r");
+      HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
+      RU_control(&hcan1, 1, 4, 1);
+    }else{
+      RU_control(&hcan1, 1, 4, 0);
+      HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
     }
     
     /* USER CODE END WHILE */

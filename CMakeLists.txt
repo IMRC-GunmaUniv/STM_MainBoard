@@ -38,6 +38,7 @@ enable_language(C ASM)
 add_executable(${CMAKE_PROJECT_NAME}
     Core/Src/imrc_ecan.c
     Core/Src/imrc_LD_220MG.c
+    Core/Src/imrc_RU_control.c
 
 )
 

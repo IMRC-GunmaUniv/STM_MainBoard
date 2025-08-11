@@ -111,7 +111,8 @@
 				3,
 				4,
 				5,
-				6
+				6,
+				7
 			]
 		},
 		{
@@ -162,7 +163,7 @@
 			"language" : "ASM",
 			"sourceIndexes" : 
 			[
-				7
+				8
 			]
 		}
 	],
@@ -208,21 +209,21 @@
 				3,
 				4,
 				5,
-				6
+				6,
+				7
 			]
 		},
 		{
 			"name" : "",
 			"sourceIndexes" : 
 			[
-				7
+				8
 			]
 		},
 		{
 			"name" : "Object Libraries",
 			"sourceIndexes" : 
 			[
-				8,
 				9,
 				10,
 				11,
@@ -239,7 +240,8 @@
 				22,
 				23,
 				24,
-				25
+				25,
+				26
 			]
 		}
 	],
@@ -255,6 +257,12 @@
 			"backtrace" : 1,
 			"compileGroupIndex" : 0,
 			"path" : "Core/Src/imrc_LD_220MG.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 1,
+			"compileGroupIndex" : 0,
+			"path" : "Core/Src/imrc_RU_control.c",
 			"sourceGroupIndex" : 0
 		},
 		{
