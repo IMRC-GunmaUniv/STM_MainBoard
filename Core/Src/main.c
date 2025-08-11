@@ -24,6 +24,8 @@
 #include "stdio.h"
 #include "imrc_ecan.h"
 #include "imrc_LD_220MG.h"
+#include "stdlib.h"
+#include "stdbool.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -72,7 +74,25 @@ int __io_putchar(int ch)
   return ch;
 }
 
+#define Button_UP 0
+#define Button_Down 1
+#define Button_Left 2
+#define Button_Right 3
+#define Button_A 4
+#define Button_B 5
+#define Button_X 6
+#define Button_Y 7
 
+#define Button_L1 8
+#define Button_R1 9
+#define Button_L2 10
+#define Button_R2 11
+#define Button_LS 12
+#define Button_RS 13
+
+void allBtnAxiState();
+bool getBtnState(uint8_t);
+/* USER CODE END Private
 /* USER CODE END 0 */
 
 /**
@@ -129,28 +149,42 @@ int main(void)
   HAL_Delay(100);
   HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
   printf("Start!!\n\r");
+
+
   
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)  {
-    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 180);
-    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_2, 180);
-    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_3, 180);
-    HAL_Delay(1000);
 
-    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 0);
-    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_2, 0);
-    LD_220MG_SetAngle(&htim2, TIM_CHANNEL_3, 0);
-    HAL_Delay(1000);
+  while (1)  {
+    allBtnAxiState(); // ボタンの状態を更新
+
+    if (getBtnState(Button_UP)){
+      printf("up\n\r");
+
+    }else if (getBtnState(Button_Down)){
+      printf("Down\n\r");
+      
+    }else if (getBtnState(Button_Left)){
+      printf("Left\n\r");
+     
+    }else if (getBtnState(Button_Right)){
+      printf("Right\n\r");
+
+    }else{
+
+    }
+   
+
+
+    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
 }
-
 
 /**
   * @brief System Clock Configuration
@@ -506,6 +540,105 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+uint32_t Rx1_unit_code,Rx1_unit_id;
+
+
+//中山プログラム
+uint32_t id;
+uint32_t dlc;
+uint8_t data[8];
+CAN_RxHeaderTypeDef RxHeader;
+uint8_t RxData[8];
+uint32_t id_ESP;
+uint32_t dlc_ESP;
+uint8_t data_ESP[8];
+CAN_RxHeaderTypeDef RxHeader1;
+uint8_t RxData1[8];
+uint8_t btnState[14] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // ボタンの状態を格納する配列
+uint8_t axiState[8] = {0, 0, 0, 0, 0, 0, 0, 0}; // スティックの状態を格納する配列
+uint32_t CAN_timer = 0; // CAN受信タイマー
+char btnName[14] = {'U', 'D', 'L', 'R', 'A', 'B', 'X', 'Y',
+                    'L', 'R', '3', '4', '5', '6'}; // ボタンの名前
+
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
+  if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
+    id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
+    ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
+    //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
+  }
+
+  if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
+    for (int i = 0; i < 8; i++){
+      data_ESP[i] = RxData1[i];
+      
+    }
+  }
+  
+}
+
+void allBtnAxiState(){
+  int _cnt = 0;
+
+  for (int i = 0; i <= 7; i++){
+    btnState[i] = ((data_ESP[1] >> i) & 1); // 初期化
+
+  }
+  for (int i = 0; i <= 5; i++){
+    btnState[8+i] = ((data_ESP[2] >> i) & 1); // 初期化
+
+  }
+
+  for(int i = 3; i <= 6; i++){
+    if((data_ESP[i] - 128) < 0 && (data_ESP[i] - 128) != -128)
+    {
+      axiState[_cnt] = abs(data_ESP[i] - 128);
+    }
+    else if((data_ESP[i] - 128) > 0)
+    {
+      axiState[_cnt+1] = data_ESP[i] - 128;
+    }
+    else
+    {
+      axiState[_cnt] = 0; // 中立位置
+      axiState[_cnt+1] = 0; // 中立位置
+    }
+    _cnt += 2;
+  }
+
+  if ((HAL_GetTick() - CAN_timer) > 50){
+    CAN_timer = HAL_GetTick(); // タイマーリセット
+
+    for (int i = 0; i < 14; i++)
+    {
+      //printf("%c:%d ", btnName[i], btnState[i]);
+    }
+    for (int i = 0; i <= 7; i++)
+    {
+      //printf("a:%d ", axiState[i]);
+    }
+    for (int i = 0; i <= 3; i++)
+    {
+      //printf("n:%d ", data_ESP[i+3]);
+    }
+    //printf("\n\r");
+  }
+
+}
+
+bool getBtnState(uint8_t  _btn)
+{
+  if(_btn >= 14)
+  {
+    return false; // 無効なボタン番号
+  }
+  else
+  {
+    return btnState[_btn]; // ボタンの状態を返す
+  }
+}
+
+
 
 /* USER CODE END 4 */
 

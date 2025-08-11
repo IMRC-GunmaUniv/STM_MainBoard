@@ -5,7 +5,7 @@
 // IMRC LD-220MG servo motor
 // Version 1.0
 
-void LD_220MG_SetAngle(TIM_HandleTypeDef *htim, uint32_t CHANNEL, int angle) {//サーボモータ制御　引数:(タイマー,チャンネル,角度[°])
+void LD_220MG_SetAngle(TIM_HandleTypeDef *htim, uint32_t CHANNEL, int angle){//サーボモータ制御　引数:(タイマー,チャンネル,角度[°])
 
     //int is_running=0;
     //int _LD_220MG_starttime=0;
