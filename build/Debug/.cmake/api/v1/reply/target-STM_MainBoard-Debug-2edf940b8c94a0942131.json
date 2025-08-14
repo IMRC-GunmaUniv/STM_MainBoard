@@ -44,6 +44,12 @@
 				"file" : 1,
 				"line" : 77,
 				"parent" : 2
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 49,
+				"parent" : 0
 			}
 		]
 	},
@@ -110,9 +116,10 @@
 				2,
 				3,
 				4,
-				5,
 				6,
-				7
+				7,
+				8,
+				9
 			]
 		},
 		{
@@ -163,7 +170,7 @@
 			"language" : "ASM",
 			"sourceIndexes" : 
 			[
-				8
+				5
 			]
 		}
 	],
@@ -208,23 +215,23 @@
 				2,
 				3,
 				4,
-				5,
 				6,
-				7
+				7,
+				8,
+				9
 			]
 		},
 		{
 			"name" : "",
 			"sourceIndexes" : 
 			[
-				8
+				5
 			]
 		},
 		{
 			"name" : "Object Libraries",
 			"sourceIndexes" : 
 			[
-				9,
 				10,
 				11,
 				12,
@@ -241,30 +248,13 @@
 				23,
 				24,
 				25,
-				26
+				26,
+				27
 			]
 		}
 	],
 	"sources" : 
 	[
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "Core/Src/imrc_ecan.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "Core/Src/imrc_LD_220MG.c",
-			"sourceGroupIndex" : 0
-		},
-		{
-			"backtrace" : 1,
-			"compileGroupIndex" : 0,
-			"path" : "Core/Src/imrc_RU_control.c",
-			"sourceGroupIndex" : 0
-		},
 		{
 			"backtrace" : 4,
 			"compileGroupIndex" : 0,
@@ -300,6 +290,30 @@
 			"compileGroupIndex" : 1,
 			"path" : "startup_stm32f446xx.s",
 			"sourceGroupIndex" : 1
+		},
+		{
+			"backtrace" : 5,
+			"compileGroupIndex" : 0,
+			"path" : "Core/Src/imrc_ecan.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 5,
+			"compileGroupIndex" : 0,
+			"path" : "Core/Src/imrc_LD_220MG.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 5,
+			"compileGroupIndex" : 0,
+			"path" : "Core/Src/imrc_RU_control.c",
+			"sourceGroupIndex" : 0
+		},
+		{
+			"backtrace" : 5,
+			"compileGroupIndex" : 0,
+			"path" : "Core/Src/imrc_MCU_move.c",
+			"sourceGroupIndex" : 0
 		},
 		{
 			"backtrace" : 3,

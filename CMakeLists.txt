@@ -35,12 +35,7 @@ message("Build type: " ${CMAKE_BUILD_TYPE})
 enable_language(C ASM)
 
 # Create an executable object type
-add_executable(${CMAKE_PROJECT_NAME}
-    Core/Src/imrc_ecan.c
-    Core/Src/imrc_LD_220MG.c
-    Core/Src/imrc_RU_control.c
-
-)
+add_executable(${CMAKE_PROJECT_NAME})
 
 # Add STM32CubeMX generated sources
 add_subdirectory(cmake/stm32cubemx)
@@ -53,6 +48,10 @@ target_link_directories(${CMAKE_PROJECT_NAME} PRIVATE
 # Add sources to executable
 target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     # Add user sources here
+    Core/Src/imrc_ecan.c
+    Core/Src/imrc_LD_220MG.c
+    Core/Src/imrc_RU_control.c
+    Core/Src/imrc_MCU_move.c
 )
 
 # Add include paths

@@ -28,6 +28,7 @@
 #include "imrc_ecan.h"
 #include "imrc_LD_220MG.h"
 #include "imrc_RU_control.h"
+#include "imrc_MCU_move.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -142,6 +143,8 @@ int main(void)
   ecan_start(&hcan1);
   ecan_start(&hcan2);
 
+  MCU_move_init(&hcan1,1); //MCU Move Unit ID  
+
   //PWM
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
@@ -161,9 +164,31 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 
   while (1)  {
+    
     allBtnAxiState(); // ボタンの状態を更新
-
     if (getBtnState(Button_UP)){
+      printf("Up\n\r");
+      LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 0);
+    }
+    
+    if(getBtnState(Button_UP)){
+      MCU_move(F, 10);
+
+    }else if (getBtnState(Button_Down)){
+      MCU_move(B, 10);
+
+    }else if (getBtnState(Button_Left)){
+      MCU_move(L, 10);
+
+    }else if (getBtnState(Button_Right)){
+      MCU_move(R, 10);
+
+    }else{
+      MCU_move(Stop, 0); // 停止
+    }
+    
+
+    if (getBtnState(Button_A)){
       printf("up\n\r");
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
       RU_control(&hcan1, 1, 1, 1);
@@ -172,7 +197,7 @@ int main(void)
       RU_control(&hcan1, 1, 1, 0);
     }
 
-    if (getBtnState(Button_Down)){
+    if (getBtnState(Button_B)){
       printf("Down\n\r");
       HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
       RU_control(&hcan1, 1, 2, 1);     
@@ -181,7 +206,7 @@ int main(void)
       RU_control(&hcan1, 1, 2, 0);
     }
 
-    if (getBtnState(Button_Left)){
+    if (getBtnState(Button_X)){
       printf("Left\n\r");
       HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
       RU_control(&hcan1, 1, 3, 1);   
@@ -190,7 +215,7 @@ int main(void)
       RU_control(&hcan1, 1, 3, 0);
     }
   
-    if (getBtnState(Button_Right)){
+    if (getBtnState(Button_Y)){
       printf("Right\n\r");
       HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
       RU_control(&hcan1, 1, 4, 1);

@@ -36,9 +36,8 @@ void RU_control(CAN_HandleTypeDef *ptr_hcan,int RU_unit_id,int relay_No,int rela
       ecan_sendPacketMtoU(ptr_hcan, 19, RU_unit_id, 3, 0, 2, body);
 
       pre_relayState[i] = relayState[i];
-
+      
       HAL_Delay(1);
     } 
   }
-
 }
