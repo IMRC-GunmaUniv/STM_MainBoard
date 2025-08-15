@@ -30,6 +30,7 @@
 #include "imrc_RU_control.h"
 #include "imrc_MCU_move.h"
 #include "canCtrlConv.h"  //imrc
+#include "imrc_PCU_control.h" //imrc
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -67,6 +68,7 @@ static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
+void ESP_conection_cheack(void); //ESPとの接続確認関数
 
 /* USER CODE END PFP */
 
@@ -77,6 +79,33 @@ int __io_putchar(int ch)
   HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 100);
   return ch;
 }
+
+//---割り込み---
+static uint32_t Rx1_unit_code,Rx1_unit_id;
+static CAN_RxHeaderTypeDef RxHeader1;
+static uint8_t RxData1[8];
+static uint32_t id;
+static uint8_t data_ESP[8]; //ESPからのデータ
+float ESP_time=0;
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
+  if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
+    id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
+    ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
+    //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
+  
+
+    if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
+      for (int i = 0; i < 8; i++){
+        data_ESP[i] = RxData1[i];
+        ESP_time = HAL_GetTick();
+
+      }
+      passCANCtrlData(data_ESP);
+    }
+  }
+}
+
 
 /* USER CODE END Private
 /* USER CODE END 0 */
@@ -130,6 +159,9 @@ int main(void)
 
   //WCD
   canCtrlConv_Init(4, 1);
+
+  //PCU
+  PCU_init(&hcan1, 1);
   
   //PWM
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
@@ -148,11 +180,24 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  int DIR = 0, spead = 0; //移動方向と速度
+  //DIP State
+  int DIP_SWITCH_1 = !HAL_GPIO_ReadPin(DIP1_GPIO_Port,DIP1_Pin); //DIPスイッチ1の状態
+  int DIP_SWITCH_2 = !HAL_GPIO_ReadPin(DIP2_GPIO_Port,DIP2_Pin); //DIPスイッチ2の状態    
+  int DIP_SWITCH_3 = !HAL_GPIO_ReadPin(DIP3_GPIO_Port,DIP3_Pin); //DIPスイッチ3の状態
+  int DIP_SWITCH_4 = !HAL_GPIO_ReadPin(DIP4_GPIO_Port,DIP4_Pin); //DIPスイッチ4の状態
+
+  int DIR = 0; //移動方向
+  int spead = 0; //速度
+
+  PCU_voltage_recovery(); //PCUの電圧を復帰
 
   while(1){
+    if(DIP_SWITCH_1 == 0){
+      ESP_conection_cheack(); //ESPとの接続確認    
+    }
+
+
     allBtnAxiState(); // ボタンの状態を更新
-    //printControllerState();
 
     //---移動　処理---
     if(getAxiState(STK_L_RIGHT)){
@@ -204,8 +249,7 @@ int main(void)
     MCU_move(DIR, spead); //MCUに移動命令
 
 
-
-
+    //---コントローラーのボタン処理---
     if (getBtnState(BTN_A)){
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
       RU_control(&hcan1, 1, 1, 1);
@@ -238,6 +282,7 @@ int main(void)
       RU_control(&hcan1, 1, 4, 0);
       HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
     }
+    
     
     /* USER CODE END WHILE */
 
@@ -439,7 +484,7 @@ static void MX_USART3_UART_Init(void)
 
   /* USER CODE END USART3_Init 1 */
   huart3.Instance = USART3;
-  huart3.Init.BaudRate = 115200;
+  huart3.Init.BaudRate = 9600;
   huart3.Init.WordLength = UART_WORDLENGTH_8B;
   huart3.Init.StopBits = UART_STOPBITS_1;
   huart3.Init.Parity = UART_PARITY_NONE;
@@ -514,8 +559,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SW1_Pin SW2_Pin SW3_Pin SW4_Pin */
-  GPIO_InitStruct.Pin = SW1_Pin|SW2_Pin|SW3_Pin|SW4_Pin;
+  /*Configure GPIO pins : SW1_Pin SW2_Pin SW3_Pin SW4_Pin
+                           DIP4_Pin DIP3_Pin */
+  GPIO_InitStruct.Pin = SW1_Pin|SW2_Pin|SW3_Pin|SW4_Pin
+                          |DIP4_Pin|DIP3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
@@ -526,12 +573,6 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
   GPIO_InitStruct.Alternate = GPIO_AF4_I2C2;
-  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
-
-  /*Configure GPIO pins : DIP4_Pin DIP3_Pin */
-  GPIO_InitStruct.Pin = DIP4_Pin|DIP3_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC6 PC7 */
@@ -577,7 +618,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : DIP2_Pin */
   GPIO_InitStruct.Pin = DIP2_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(DIP2_GPIO_Port, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PC12 */
@@ -591,7 +632,7 @@ static void MX_GPIO_Init(void)
   /*Configure GPIO pin : DIP1_Pin */
   GPIO_InitStruct.Pin = DIP1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(DIP1_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
@@ -600,25 +641,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-static uint32_t Rx1_unit_code,Rx1_unit_id;
-static CAN_RxHeaderTypeDef RxHeader1;
-static uint8_t RxData1[8];
-static uint32_t id;
-static uint8_t data_ESP[8]; //ESPからのデータ
+void ESP_conection_cheack(void){
+  //ESPとの接続確認
+  if(ESP_time == 0){
+    ESP_time = HAL_GetTick();
+  }else{
+    if(HAL_GetTick() - ESP_time > 3000){ //3秒以上経過していたら
+      //printf("ESP is not connected  time:%f\n\r",ESP_time);
+      PCU_voltage_cutoff(); //電源をカット
 
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
-  if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
-    id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
-    ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
-    //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
-  
+      HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,1);
+      HAL_Delay(500);
+      HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,0);
+      printf("ESP is not connected\n\r");
 
-    if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
-      for (int i = 0; i < 8; i++){
-        data_ESP[i] = RxData1[i];
-
-      }
-      passCANCtrlData(data_ESP);
+    }else{
+      //printf("ESP is connected\n\r");
+      PCU_voltage_recovery(); //電源を復帰
     }
   }
 }
