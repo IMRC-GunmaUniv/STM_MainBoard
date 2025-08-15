@@ -158,7 +158,7 @@ int main(void)
   MCU_move_init(&hcan1,1); 
 
   //WCD
-  canCtrlConv_Init(4, 1);
+  canCtrlConv_Init(100, 10);
 
   //PCU
   PCU_init(&hcan1, 1);
@@ -237,14 +237,6 @@ int main(void)
       spead= 0; // 速度も0に設定
 
     }
-
-    //速度2段階
-    if(spead >= 1 && spead <= 2){
-      spead = 5; 
-    }else if(spead >= 3 && spead <= 4){
-      spead = 10;
-    }
-
     //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
     MCU_move(DIR, spead); //MCUに移動命令
 
@@ -646,12 +638,12 @@ void ESP_conection_cheack(void){
   if(ESP_time == 0){
     ESP_time = HAL_GetTick();
   }else{
-    if(HAL_GetTick() - ESP_time > 3000){ //3秒以上経過していたら
+    if(HAL_GetTick() - ESP_time > 2000){ //2秒以上経過していたら
       //printf("ESP is not connected  time:%f\n\r",ESP_time);
       PCU_voltage_cutoff(); //電源をカット
 
       HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,1);
-      HAL_Delay(500);
+      HAL_Delay(100);
       HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,0);
       printf("ESP is not connected\n\r");
 
