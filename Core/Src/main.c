@@ -29,6 +29,7 @@
 #include "imrc_LD_220MG.h"
 #include "imrc_RU_control.h"
 #include "imrc_MCU_move.h"
+#include "canCtrlConv.h"  //imrc
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -77,25 +78,6 @@ int __io_putchar(int ch)
   return ch;
 }
 
-#define Button_UP 0
-#define Button_Down 1
-#define Button_Left 2
-#define Button_Right 3
-#define Button_A 4
-#define Button_B 5
-#define Button_X 6
-#define Button_Y 7
-
-#define Button_L1 8
-#define Button_R1 9
-#define Button_L2 10
-#define Button_R2 11
-#define Button_LS 12
-#define Button_RS 13
-
-void allBtnAxiState();
-bool getBtnState(uint8_t);
-
 /* USER CODE END Private
 /* USER CODE END 0 */
 
@@ -143,8 +125,12 @@ int main(void)
   ecan_start(&hcan1);
   ecan_start(&hcan2);
 
-  MCU_move_init(&hcan1,1); //MCU Move Unit ID  
+  //MCU
+  MCU_move_init(&hcan1,1); 
 
+  //WCD
+  canCtrlConv_Init(4, 1);
+  
   //PWM
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
@@ -162,34 +148,65 @@ int main(void)
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  int DIR = 0, spead = 0; //移動方向と速度
 
-  while (1)  {
-    
+  while(1){
     allBtnAxiState(); // ボタンの状態を更新
-    if (getBtnState(Button_UP)){
-      printf("Up\n\r");
-      LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 0);
+    //printControllerState();
+
+    //---移動　処理---
+    if(getAxiState(STK_L_RIGHT)){
+      DIR = RIGHT;
+      spead= getAxiState(STK_L_RIGHT);
+
+    }else if (getAxiState(STK_L_UPRIGHT)){
+      DIR = FRONT_RIGHT;
+      spead = getAxiState(STK_L_UPRIGHT);
+
+    }else if (getAxiState(STK_L_UP)){
+      DIR = FRONT;
+      spead = getAxiState(STK_L_UP);
+
+    }else if (getAxiState(STK_L_UPLEFT)){
+      DIR = FRONT_LEFT;
+      spead = getAxiState(STK_L_UPLEFT);
+
+    }else if(getAxiState(STK_L_LEFT)){
+      DIR = LEFT;
+      spead = getAxiState(STK_L_LEFT);
+
+    }else if(getAxiState(STK_L_DOWNLEFT)){
+      DIR = BUCK_LEFT;
+      spead = getAxiState(STK_L_DOWNLEFT);
+
+    }else if(getAxiState(STK_L_DOWN)){
+      DIR = BUCK;
+      spead = getAxiState(STK_L_DOWN);
+
+    }else if(getAxiState(STK_L_DOWNRIGHT)){
+      DIR = BUCK_RIGHT;
+      spead = getAxiState(STK_L_DOWNRIGHT);
+
+    } else{
+      DIR = Stop; // どの方向にも入力がない場合は停止
+      spead= 0; // 速度も0に設定
+
     }
-    
-    if(getBtnState(Button_UP)){
-      MCU_move(F, 10);
 
-    }else if (getBtnState(Button_Down)){
-      MCU_move(B, 10);
-
-    }else if (getBtnState(Button_Left)){
-      MCU_move(L, 10);
-
-    }else if (getBtnState(Button_Right)){
-      MCU_move(R, 10);
-
-    }else{
-      MCU_move(Stop, 0); // 停止
+    //速度2段階
+    if(spead >= 1 && spead <= 2){
+      spead = 5; 
+    }else if(spead >= 3 && spead <= 4){
+      spead = 10;
     }
-    
 
-    if (getBtnState(Button_A)){
-      printf("up\n\r");
+    //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
+    MCU_move(DIR, spead); //MCUに移動命令
+
+
+
+
+    if (getBtnState(BTN_A)){
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
       RU_control(&hcan1, 1, 1, 1);
     }else{      
@@ -197,8 +214,7 @@ int main(void)
       RU_control(&hcan1, 1, 1, 0);
     }
 
-    if (getBtnState(Button_B)){
-      printf("Down\n\r");
+    if (getBtnState(BTN_B)){
       HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
       RU_control(&hcan1, 1, 2, 1);     
     }else{
@@ -206,8 +222,7 @@ int main(void)
       RU_control(&hcan1, 1, 2, 0);
     }
 
-    if (getBtnState(Button_X)){
-      printf("Left\n\r");
+    if (getBtnState(BTN_X)){
       HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
       RU_control(&hcan1, 1, 3, 1);   
     }else{
@@ -215,7 +230,7 @@ int main(void)
       RU_control(&hcan1, 1, 3, 0);
     }
   
-    if (getBtnState(Button_Y)){
+    if (getBtnState(BTN_Y)){
       printf("Right\n\r");
       HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
       RU_control(&hcan1, 1, 4, 1);
@@ -585,26 +600,11 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-uint32_t Rx1_unit_code,Rx1_unit_id;
-
-
-//中山プログラム
-uint32_t id;
-uint32_t dlc;
-uint8_t data[8];
-CAN_RxHeaderTypeDef RxHeader;
-uint8_t RxData[8];
-uint32_t id_ESP;
-uint32_t dlc_ESP;
-uint8_t data_ESP[8];
-CAN_RxHeaderTypeDef RxHeader1;
-uint8_t RxData1[8];
-uint8_t btnState[14] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}; // ボタンの状態を格納する配列
-uint8_t axiState[8] = {0, 0, 0, 0, 0, 0, 0, 0}; // スティックの状態を格納する配列
-uint32_t CAN_timer = 0; // CAN受信タイマー
-char btnName[14] = {'U', 'D', 'L', 'R', 'A', 'B', 'X', 'Y',
-                    'L', 'R', '3', '4', '5', '6'}; // ボタンの名前
-
+static uint32_t Rx1_unit_code,Rx1_unit_id;
+static CAN_RxHeaderTypeDef RxHeader1;
+static uint8_t RxData1[8];
+static uint32_t id;
+static uint8_t data_ESP[8]; //ESPからのデータ
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
   if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
@@ -618,73 +618,10 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
         data_ESP[i] = RxData1[i];
 
       }
+      passCANCtrlData(data_ESP);
     }
-  }
-  
-}
-
-void allBtnAxiState(){
-  int _cnt = 0;
-
-  for (int i = 0; i <= 7; i++){
-    btnState[i] = ((data_ESP[1] >> i) & 1); // 初期化
-
-  }
-  for (int i = 0; i <= 5; i++){
-    btnState[8+i] = ((data_ESP[2] >> i) & 1); // 初期化
-
-  }
-
-  for(int i = 3; i <= 6; i++){
-    if((data_ESP[i] - 128) < 0 && (data_ESP[i] - 128) != -128)
-    {
-      axiState[_cnt] = abs(data_ESP[i] - 128);
-    }
-    else if((data_ESP[i] - 128) > 0)
-    {
-      axiState[_cnt+1] = data_ESP[i] - 128;
-    }
-    else
-    {
-      axiState[_cnt] = 0; // 中立位置
-      axiState[_cnt+1] = 0; // 中立位置
-    }
-    _cnt += 2;
-  }
-
-  if ((HAL_GetTick() - CAN_timer) > 50){
-    CAN_timer = HAL_GetTick(); // タイマーリセット
-
-    for (int i = 0; i < 14; i++)
-    {
-      //printf("%c:%d ", btnName[i], btnState[i]);
-    }
-    for (int i = 0; i <= 7; i++)
-    {
-      //printf("a:%d ", axiState[i]);
-    }
-    for (int i = 0; i <= 3; i++)
-    {
-      //printf("n:%d ", data_ESP[i+3]);
-    }
-    //printf("\n\r");
-  }
-
-}
-
-bool getBtnState(uint8_t  _btn)
-{
-  if(_btn >= 14)
-  {
-    return false; // 無効なボタン番号
-  }
-  else
-  {
-    return btnState[_btn]; // ボタンの状態を返す
   }
 }
-
-
 
 /* USER CODE END 4 */
 

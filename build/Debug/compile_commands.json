@@ -61,6 +61,12 @@
 },
 {
   "directory": "C:/Users/miyaz/IMRC_Program/STM_MainBoard/build/Debug",
+  "command": "C:\\ST\\STM32CubeCLT_1.18.0\\GNU-tools-for-STM32\\bin\\arm-none-eabi-gcc.exe -DDEBUG -DSTM32F446xx -DUSE_HAL_DRIVER -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Core/Inc -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/STM32F4xx_HAL_Driver/Inc -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/CMSIS/Device/ST/STM32F4xx/Include -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/CMSIS/Include  -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard  -Wall -Wextra -Wpedantic -fdata-sections -ffunction-sections -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard  -Wall -Wextra -Wpedantic -fdata-sections -ffunction-sections -O0 -g3 -std=gnu11 -o CMakeFiles\\STM_MainBoard.dir\\Core\\Src\\canCtrlConv.c.obj -c C:\\Users\\miyaz\\IMRC_Program\\STM_MainBoard\\Core\\Src\\canCtrlConv.c",
+  "file": "C:\\Users\\miyaz\\IMRC_Program\\STM_MainBoard\\Core\\Src\\canCtrlConv.c",
+  "output": "CMakeFiles\\STM_MainBoard.dir\\Core\\Src\\canCtrlConv.c.obj"
+},
+{
+  "directory": "C:/Users/miyaz/IMRC_Program/STM_MainBoard/build/Debug",
   "command": "C:\\ST\\STM32CubeCLT_1.18.0\\GNU-tools-for-STM32\\bin\\arm-none-eabi-gcc.exe -DDEBUG -DSTM32F446xx -DUSE_HAL_DRIVER -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Core/Inc -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/STM32F4xx_HAL_Driver/Inc -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/STM32F4xx_HAL_Driver/Inc/Legacy -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/CMSIS/Device/ST/STM32F4xx/Include -IC:/Users/miyaz/IMRC_Program/STM_MainBoard/Drivers/CMSIS/Include  -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard  -Wall -Wextra -Wpedantic -fdata-sections -ffunction-sections -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard  -Wall -Wextra -Wpedantic -fdata-sections -ffunction-sections -O0 -g3 -std=gnu11 -o cmake\\stm32cubemx\\CMakeFiles\\STM32_Drivers.dir\\__\\__\\Core\\Src\\system_stm32f4xx.c.obj -c C:\\Users\\miyaz\\IMRC_Program\\STM_MainBoard\\Core\\Src\\system_stm32f4xx.c",
   "file": "C:\\Users\\miyaz\\IMRC_Program\\STM_MainBoard\\Core\\Src\\system_stm32f4xx.c",
   "output": "cmake\\stm32cubemx\\CMakeFiles\\STM32_Drivers.dir\\__\\__\\Core\\Src\\system_stm32f4xx.c.obj"
