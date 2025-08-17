@@ -12,7 +12,7 @@
 static int PCU_unit_id = 0;
 static CAN_HandleTypeDef *PCU_hcan;
 
-int PCU_init(CAN_HandleTypeDef *ptr_hcan, int unit_id){
+int PCU_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id){
     if (0 <= unit_id && unit_id <= 7)
     {
         PCU_unit_id = unit_id;
@@ -38,7 +38,7 @@ void PCU_relay_control(int relay_State){ //引数:( 0 or 1 )
     if(isChanged){
         pre_State = relay_State; // 前回の状態を更新
         uint8_t body[1] = { (uint8_t)relay_State };
-        printf("PCU relay control: %d\n\r", body[0]);
+        //printf("PCU relay control: %d\n\r", body[0]);
         ecan_sendPacketMtoU(PCU_hcan, 18, PCU_unit_id, 3, 0, 1, body);
 
         

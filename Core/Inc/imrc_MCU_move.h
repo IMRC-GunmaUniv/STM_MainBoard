@@ -20,7 +20,7 @@
 #define RIGHT_ROTATE 10
 
 
-int MCU_move_init(CAN_HandleTypeDef *ptr_hcan, int unit_id);
+int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id);
 void MCU_move(int DIR, int speed);
 
 

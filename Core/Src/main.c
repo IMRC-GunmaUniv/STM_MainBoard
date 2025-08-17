@@ -68,7 +68,7 @@ static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-void ESP_conection_cheack(void); //ESPとの接続確認関数
+void connection_check(void); //ESPとの接続確認関数
 
 /* USER CODE END PFP */
 
@@ -86,22 +86,42 @@ static CAN_RxHeaderTypeDef RxHeader1;
 static uint8_t RxData1[8];
 static uint32_t id;
 static uint8_t data_ESP[8]; //ESPからのデータ
-float ESP_time=0;
+static uint8_t data_PCU[8];
+static uint8_t data_MCU[8];
+static uint8_t data_RU[8];
 
+float connection_time[]={0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU,　RU｝
+ 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
   if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
     id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
     ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
     //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
-  
 
     if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
+      connection_time[0] = HAL_GetTick();
       for (int i = 0; i < 8; i++){
         data_ESP[i] = RxData1[i];
-        ESP_time = HAL_GetTick();
-
       }
       passCANCtrlData(data_ESP);
+
+    }else if(Rx1_unit_code==18 && Rx1_unit_id==1){//PCU
+      connection_time[1] = HAL_GetTick();
+      for (int i = 0; i < 8; i++){
+        data_PCU[i] = RxData1[i];
+      }
+
+    }else if(Rx1_unit_code==16 && Rx1_unit_id==1){ //MCU
+      connection_time[2] = HAL_GetTick();
+      for (int i = 0; i < 8; i++){
+        data_MCU[i] = RxData1[i];
+      }
+
+    }else if(Rx1_unit_code==19 && Rx1_unit_id==1){ //RU
+      connection_time[3] = HAL_GetTick();
+      for (int i = 0; i < 8; i++){
+        data_RU[i] = RxData1[i];
+      }
     }
   }
 }
@@ -155,13 +175,13 @@ int main(void)
   ecan_start(&hcan2);
 
   //MCU
-  MCU_move_init(&hcan1,1); 
+  MCU_move_Init(&hcan1,1); 
 
   //WCD
   canCtrlConv_Init(100, 10);
 
   //PCU
-  PCU_init(&hcan1, 1);
+  PCU_Init(&hcan1, 1);
   
   //PWM
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
@@ -182,9 +202,9 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   //DIP State
   int DIP_SWITCH_1 = !HAL_GPIO_ReadPin(DIP1_GPIO_Port,DIP1_Pin); //DIPスイッチ1の状態
-  int DIP_SWITCH_2 = !HAL_GPIO_ReadPin(DIP2_GPIO_Port,DIP2_Pin); //DIPスイッチ2の状態    
-  int DIP_SWITCH_3 = !HAL_GPIO_ReadPin(DIP3_GPIO_Port,DIP3_Pin); //DIPスイッチ3の状態
-  int DIP_SWITCH_4 = !HAL_GPIO_ReadPin(DIP4_GPIO_Port,DIP4_Pin); //DIPスイッチ4の状態
+  // int DIP_SWITCH_2 = !HAL_GPIO_ReadPin(DIP2_GPIO_Port,DIP2_Pin); //DIPスイッチ2の状態    
+  // int DIP_SWITCH_3 = !HAL_GPIO_ReadPin(DIP3_GPIO_Port,DIP3_Pin); //DIPスイッチ3の状態
+  // int DIP_SWITCH_4 = !HAL_GPIO_ReadPin(DIP4_GPIO_Port,DIP4_Pin); //DIPスイッチ4の状態
 
   int DIR = 0; //移動方向
   int spead = 0; //速度
@@ -193,7 +213,7 @@ int main(void)
 
   while(1){
     if(DIP_SWITCH_1 == 0){
-      ESP_conection_cheack(); //ESPとの接続確認    
+      connection_check(); //ESPとの接続確認    
     }
 
 
@@ -514,38 +534,38 @@ static void MX_GPIO_Init(void)
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_A1_Pin|GPIO_A2_Pin|GPIO_A3_Pin|GPIO_B1_Pin
-                          |GPIO_B2_Pin|GPIO_B3_Pin|GPIO_C1_Pin|LED2_Pin
-                          |LED3_Pin|BZ_Pin, GPIO_PIN_RESET);
+                          |GPIO_B2_Pin|GPIO_B3_Pin|GPIO_C1_Pin|LED3_Pin
+                          |LED2_Pin|BZ_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_D1_Pin|GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin
-                          |LED1_Pin, GPIO_PIN_RESET);
+                          |LED4_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOB, LED4_Pin|CAN_LED2_Pin|CAN_LED1_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOB, LED1_Pin|CAN_LED2_Pin|CAN_LED1_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pins : GPIO_A1_Pin GPIO_A2_Pin GPIO_A3_Pin GPIO_B1_Pin
-                           GPIO_B2_Pin GPIO_B3_Pin GPIO_C1_Pin LED2_Pin
-                           LED3_Pin BZ_Pin */
+                           GPIO_B2_Pin GPIO_B3_Pin GPIO_C1_Pin LED3_Pin
+                           LED2_Pin BZ_Pin */
   GPIO_InitStruct.Pin = GPIO_A1_Pin|GPIO_A2_Pin|GPIO_A3_Pin|GPIO_B1_Pin
-                          |GPIO_B2_Pin|GPIO_B3_Pin|GPIO_C1_Pin|LED2_Pin
-                          |LED3_Pin|BZ_Pin;
+                          |GPIO_B2_Pin|GPIO_B3_Pin|GPIO_C1_Pin|LED3_Pin
+                          |LED2_Pin|BZ_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : GPIO_D1_Pin GPIO_D2_Pin GPIO_D3_Pin GPIO_D4_Pin
-                           LED1_Pin */
+                           LED4_Pin */
   GPIO_InitStruct.Pin = GPIO_D1_Pin|GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin
-                          |LED1_Pin;
+                          |LED4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : LED4_Pin CAN_LED2_Pin CAN_LED1_Pin */
-  GPIO_InitStruct.Pin = LED4_Pin|CAN_LED2_Pin|CAN_LED1_Pin;
+  /*Configure GPIO pins : LED1_Pin CAN_LED2_Pin CAN_LED1_Pin */
+  GPIO_InitStruct.Pin = LED1_Pin|CAN_LED2_Pin|CAN_LED1_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -633,25 +653,70 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void ESP_conection_cheack(void){
-  //ESPとの接続確認
-  if(ESP_time == 0){
-    ESP_time = HAL_GetTick();
-  }else{
-    if(HAL_GetTick() - ESP_time > 2000){ //2秒以上経過していたら
-      //printf("ESP is not connected  time:%f\n\r",ESP_time);
-      PCU_voltage_cutoff(); //電源をカット
+void connection_check(void) {
+  float CHECK_INTERVAL = 6000; // 接続確認の間隔（ミリ秒）
+  int connection_state[4] = {0, 0, 0, 0}; // 接続確認用の時間配列
 
-      HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,1);
-      HAL_Delay(100);
-      HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,0);
-      printf("ESP is not connected\n\r");
+  for (int i = 0; i < 4; i++) {
+    if (connection_time[i] == 0) {
+      connection_time[i] = HAL_GetTick();
+      continue;
+    }
+
+    float CHECK_TIME = HAL_GetTick() - connection_time[i];
+    if (CHECK_TIME > CHECK_INTERVAL) {
+      // --- 接続が切れたときの処理 ---
+      PCU_voltage_cutoff();
+
+      switch (i) {
+        case 0:
+          printf("WCD is disconnected\n\r");
+          HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
+          connection_state[0] = 1;
+          break;
+        case 1:
+          printf("PCU is disconnected\n\r");
+          HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
+          connection_state[1] = 1;
+          break;
+        case 2:
+          printf("MCU is disconnected\n\r");
+          HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+          connection_state[2] = 1;  
+          break;
+        case 3:
+          printf("RU is disconnected\n\r");
+          HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
+          connection_state[3] = 1;
+          break;
+      }
+
+      // ブザー通知
+      HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_SET);
+      HAL_Delay(150);
+      HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_RESET);
 
     }else{
-      //printf("ESP is connected\n\r");
-      PCU_voltage_recovery(); //電源を復帰
+      connection_state[i] = 0;
+      PCU_voltage_recovery();
+    }
+
+  }
+
+  int disconect = 0;
+  for (int i=0 ; i<4 ; i++){
+    if(connection_state[i] == 1){
+      disconect = 1;
+      break;
     }
   }
+  if (disconect) {
+    PCU_voltage_cutoff();
+
+  } else {
+    PCU_voltage_recovery();
+  }
+ 
 }
 
 /* USER CODE END 4 */

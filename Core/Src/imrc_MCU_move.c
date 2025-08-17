@@ -7,7 +7,7 @@
 static int MCU_move_unit_id = 0;
 static CAN_HandleTypeDef *MCU_move_hcan;
 
-int MCU_move_init(CAN_HandleTypeDef *ptr_hcan, int unit_id){
+int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id){
     if (0 <= unit_id && unit_id <= 7)
     {
         MCU_move_unit_id = unit_id;
