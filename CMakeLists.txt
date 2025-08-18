@@ -51,7 +51,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/imrc_ecan.c
     Core/Src/imrc_LD_220MG.c
     Core/Src/imrc_RU_control.c
-    Core/Src/imrc_MCU_move.c
+    Core/Src/imrc_MCU_control.c
     Core/Src/canCtrlConv.c
     Core/Src/imrc_PCU_control.c
 )

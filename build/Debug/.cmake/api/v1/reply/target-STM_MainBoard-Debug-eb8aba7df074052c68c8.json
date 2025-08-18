@@ -316,7 +316,7 @@
 		{
 			"backtrace" : 5,
 			"compileGroupIndex" : 0,
-			"path" : "Core/Src/imrc_MCU_move.c",
+			"path" : "Core/Src/imrc_MCU_control.c",
 			"sourceGroupIndex" : 0
 		},
 		{

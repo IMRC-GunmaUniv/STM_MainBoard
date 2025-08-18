@@ -28,9 +28,9 @@
 #include "imrc_ecan.h"
 #include "imrc_LD_220MG.h"
 #include "imrc_RU_control.h"
-#include "imrc_MCU_move.h"
+#include "imrc_MCU_control.h"
 #include "canCtrlConv.h"  //imrc
-#include "imrc_PCU_control.h" //imrc
+#include "imrc_PCU_control.h" 
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -74,8 +74,7 @@ void connection_check(void); //ESPとの接続確認関数
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-int __io_putchar(int ch)
-{ // printfを使えるようにする関数
+int __io_putchar(int ch){ // printfを使えるようにする関数
   HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 100);
   return ch;
 }
@@ -98,7 +97,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
     ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
     //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
 
-    if(Rx1_unit_code==17 && Rx1_unit_id==1){ //Wireless Controller Dongle
+    if(Rx1_unit_code==17 && Rx1_unit_id==1){ //WCD
       connection_time[0] = HAL_GetTick();
       for (int i = 0; i < 8; i++){
         data_ESP[i] = RxData1[i];
@@ -175,7 +174,7 @@ int main(void)
   ecan_start(&hcan2);
 
   //MCU
-  MCU_move_Init(&hcan1,1); 
+  MCU_move_Init(&hcan1,1,100); 
 
   //WCD
   canCtrlConv_Init(100, 10);
@@ -189,9 +188,12 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
   //Start sign
-  HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
-  HAL_Delay(100);
-  HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+  for(int i = 0; i < 2; i++){
+    HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+    HAL_Delay(40);
+    HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+    HAL_Delay(25);
+  }
   printf("Start!!\n\r");
 
 
@@ -669,22 +671,22 @@ void connection_check(void) {
       PCU_voltage_cutoff();
 
       switch (i) {
-        case 0:
+        case 0: //WCD
           printf("WCD is disconnected\n\r");
           HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
           connection_state[0] = 1;
           break;
-        case 1:
+        case 1: //PCU
           printf("PCU is disconnected\n\r");
           HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
           connection_state[1] = 1;
           break;
-        case 2:
+        case 2: //MCU
           printf("MCU is disconnected\n\r");
           HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
           connection_state[2] = 1;  
           break;
-        case 3:
+        case 3: //RU
           printf("RU is disconnected\n\r");
           HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
           connection_state[3] = 1;
@@ -698,7 +700,6 @@ void connection_check(void) {
 
     }else{
       connection_state[i] = 0;
-      PCU_voltage_recovery();
     }
 
   }
@@ -729,6 +730,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
+  MCU_move(Stop, 0);
   __disable_irq();
   while (1)
   {

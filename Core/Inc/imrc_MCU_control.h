@@ -1,7 +1,7 @@
-#ifndef IMRC_MCU_MOVE_H
-#define IMRC_MCU_MOVE_H
+#ifndef IMRC_MCU_CONTROL_H
+#define IMRC_MCU_CONTROL_H
 
-// IMRC LD-220MG servo motor
+// IMRC MCU Control Header File
 // Version 1.0
 
 #include "stm32f4xx_hal.h"
@@ -20,10 +20,8 @@
 #define RIGHT_ROTATE 10
 
 
-int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id);
+int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id, int max_speed);
 void MCU_move(int DIR, int speed);
-
-
 
 
 
