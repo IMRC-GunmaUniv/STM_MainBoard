@@ -21,7 +21,7 @@
 
 
 int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id, int max_speed);
-void MCU_move(int DIR, int speed);
+void MCU_move(int DIR,int spead, int reverse);
 
 
 

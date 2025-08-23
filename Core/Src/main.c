@@ -68,7 +68,10 @@ static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
-void connection_check(void); //ESPとの接続確認関数
+
+void connection_monitoring(float); //ESPとの接続確認関数
+void unit_check(int wait_time);
+void ALL_LED_OFF(void);
 
 /* USER CODE END PFP */
 
@@ -79,6 +82,8 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
   return ch;
 }
 
+
+int reverse = 0; // 0:通常, 1:反転
 //---割り込み---
 static uint32_t Rx1_unit_code,Rx1_unit_id;
 static CAN_RxHeaderTypeDef RxHeader1;
@@ -90,6 +95,7 @@ static uint8_t data_MCU[8];
 static uint8_t data_RU[8];
 
 float connection_time[]={0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU,　RU｝
+int Y_ischenge = 0;
  
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
   if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
@@ -187,87 +193,36 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
-  //Start sign
-  for(int i = 0; i < 2; i++){
-    HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
-    HAL_Delay(40);
-    HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
-    HAL_Delay(25);
-  }
-  printf("Start!!\n\r");
-
-
+  //接続中のユニットを探す
+  unit_check(3000);
   
+  //Start sign
+  HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+  HAL_Delay(500);
+  HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
+  printf("Start!!\n\r");
+  ALL_LED_OFF();
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  //DIP State
-  int DIP_SWITCH_1 = !HAL_GPIO_ReadPin(DIP1_GPIO_Port,DIP1_Pin); //DIPスイッチ1の状態
-  // int DIP_SWITCH_2 = !HAL_GPIO_ReadPin(DIP2_GPIO_Port,DIP2_Pin); //DIPスイッチ2の状態    
-  // int DIP_SWITCH_3 = !HAL_GPIO_ReadPin(DIP3_GPIO_Port,DIP3_Pin); //DIPスイッチ3の状態
-  // int DIP_SWITCH_4 = !HAL_GPIO_ReadPin(DIP4_GPIO_Port,DIP4_Pin); //DIPスイッチ4の状態
-
-  int DIR = 0; //移動方向
-  int spead = 0; //速度
-
+  
   PCU_voltage_recovery(); //PCUの電圧を復帰
 
+  int last_BTN_Y_state = 0; //Yボタンの前回の状態
   while(1){
-    if(DIP_SWITCH_1 == 0){
-      connection_check(); //ESPとの接続確認    
-    }
+    connection_monitoring(1700); //各ユニットとの接続確認    
 
-
-    allBtnAxiState(); // ボタンの状態を更新
-
-    //---移動　処理---
-    if(getAxiState(STK_L_RIGHT)){
-      DIR = RIGHT;
-      spead= getAxiState(STK_L_RIGHT);
-
-    }else if (getAxiState(STK_L_UPRIGHT)){
-      DIR = FRONT_RIGHT;
-      spead = getAxiState(STK_L_UPRIGHT);
-
-    }else if (getAxiState(STK_L_UP)){
-      DIR = FRONT;
-      spead = getAxiState(STK_L_UP);
-
-    }else if (getAxiState(STK_L_UPLEFT)){
-      DIR = FRONT_LEFT;
-      spead = getAxiState(STK_L_UPLEFT);
-
-    }else if(getAxiState(STK_L_LEFT)){
-      DIR = LEFT;
-      spead = getAxiState(STK_L_LEFT);
-
-    }else if(getAxiState(STK_L_DOWNLEFT)){
-      DIR = BUCK_LEFT;
-      spead = getAxiState(STK_L_DOWNLEFT);
-
-    }else if(getAxiState(STK_L_DOWN)){
-      DIR = BUCK;
-      spead = getAxiState(STK_L_DOWN);
-
-    }else if(getAxiState(STK_L_DOWNRIGHT)){
-      DIR = BUCK_RIGHT;
-      spead = getAxiState(STK_L_DOWNRIGHT);
-
-    } else{
-      DIR = Stop; // どの方向にも入力がない場合は停止
-      spead= 0; // 速度も0に設定
-
-    }
-    //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
-    MCU_move(DIR, spead); //MCUに移動命令
-
-
+    allBtnAxiState(); //ボタンの状態を更新
+    handleMovement(); //移動　
+    
     //---コントローラーのボタン処理---
     if (getBtnState(BTN_A)){
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
       RU_control(&hcan1, 1, 1, 1);
     }else{      
+
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); 
       RU_control(&hcan1, 1, 1, 0);
     }
@@ -288,13 +243,11 @@ int main(void)
       RU_control(&hcan1, 1, 3, 0);
     }
   
-    if (getBtnState(BTN_Y)){
-      printf("Right\n\r");
-      HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-      RU_control(&hcan1, 1, 4, 1);
-    }else{
-      RU_control(&hcan1, 1, 4, 0);
-      HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_RESET);
+    if (getBtnState(BTN_Y) != last_BTN_Y_state){
+      if (getBtnState(BTN_Y)) {
+        reverse = !reverse;
+      }
+      last_BTN_Y_state = getBtnState(BTN_Y);
     }
     
     
@@ -655,9 +608,53 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void connection_check(void) {
-  float CHECK_INTERVAL = 6000; // 接続確認の間隔（ミリ秒）
-  int connection_state[4] = {0, 0, 0, 0}; // 接続確認用の時間配列
+int device_list[4] = {0, 0, 0, 0}; // 接続中のデバイス配列　0:未接続　1:接続中
+void unit_check(int wait_time){
+  int start_time = HAL_GetTick();
+  while(HAL_GetTick() - start_time < (wait_time+500)){
+
+    for(int i=0;i<4;i++){
+      if(connection_time[i]==0){
+        connection_time[i] = HAL_GetTick();
+        continue;
+      }
+      
+      float CHECK_TIME = HAL_GetTick() - connection_time[i];
+      if(!HAL_GPIO_ReadPin(DIP1_GPIO_Port,DIP1_Pin)) {//全部つながってないといけないモード
+        device_list[i] = 1;
+        continue;
+      }else if(CHECK_TIME > wait_time ){ //つながっていないユニットを探す
+        switch (i){
+          case 0: //WCD
+            printf("WCD is disconnected\n\r");
+            HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_SET);
+            break;
+          case 1: //PCU
+            printf("PCU is disconnected\n\r");
+            HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_SET);
+            break;
+          case 2: //MCU
+            printf("MCU is disconnected\n\r");
+            HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_SET);
+            break;
+          case 3: //RU
+            printf("RU is disconnected\n\r");
+            HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_SET);
+            break;
+        }
+        device_list[i] = 0;
+
+      }else{//つながってたら
+        device_list[i] = 1;
+      }
+    }
+
+  }
+  
+}
+
+void connection_monitoring(float CHECK_INTERVAL) {
+  int connection_state[4] = {0, 0, 0, 0}; // 接続確認用の時間配列　0:未接続　1:接続中
 
   for (int i = 0; i < 4; i++) {
     if (connection_time[i] == 0) {
@@ -666,30 +663,29 @@ void connection_check(void) {
     }
 
     float CHECK_TIME = HAL_GetTick() - connection_time[i];
-    if (CHECK_TIME > CHECK_INTERVAL) {
-      // --- 接続が切れたときの処理 ---
+    if (CHECK_TIME > CHECK_INTERVAL  && device_list[i] == 1) { //接続が切れたときの処理 
       PCU_voltage_cutoff();
 
       switch (i) {
         case 0: //WCD
           printf("WCD is disconnected\n\r");
           HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);
-          connection_state[0] = 1;
+          connection_state[0] = 0;
           break;
         case 1: //PCU
           printf("PCU is disconnected\n\r");
           HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
-          connection_state[1] = 1;
+          connection_state[1] = 0;
           break;
         case 2: //MCU
           printf("MCU is disconnected\n\r");
           HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-          connection_state[2] = 1;  
+          connection_state[2] = 0;  
           break;
         case 3: //RU
           printf("RU is disconnected\n\r");
           HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-          connection_state[3] = 1;
+          connection_state[3] = 0;
           break;
       }
 
@@ -699,9 +695,8 @@ void connection_check(void) {
       HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_RESET);
 
     }else{
-      connection_state[i] = 0;
+      connection_state[i] = 1;
     }
-
   }
 
   int disconect = 0;
@@ -717,9 +712,69 @@ void connection_check(void) {
   } else {
     PCU_voltage_recovery();
   }
- 
+
 }
 
+void ALL_LED_OFF(void){
+  HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_RESET);
+}
+
+void handleMovement(){
+  int DIR = 0; //移動方向
+  int spead = 0; //速度
+
+  //---移動　処理---
+  if(getAxiState(STK_L_RIGHT)){
+    DIR = RIGHT;
+    spead= getAxiState(STK_L_RIGHT);
+
+  }else if (getAxiState(STK_L_UPRIGHT)){
+    DIR = FRONT_RIGHT;
+    spead = getAxiState(STK_L_UPRIGHT);
+
+  }else if (getAxiState(STK_L_UP)){
+    DIR = FRONT;
+    spead = getAxiState(STK_L_UP);
+
+  }else if (getAxiState(STK_L_UPLEFT)){
+    DIR = FRONT_LEFT;
+    spead = getAxiState(STK_L_UPLEFT);
+
+  }else if(getAxiState(STK_L_LEFT)){
+    DIR = LEFT;
+    spead = getAxiState(STK_L_LEFT);
+
+  }else if(getAxiState(STK_L_DOWNLEFT)){
+    DIR = BUCK_LEFT;
+    spead = getAxiState(STK_L_DOWNLEFT);
+
+  }else if(getAxiState(STK_L_DOWN)){
+    DIR = BUCK;
+    spead = getAxiState(STK_L_DOWN);
+
+  }else if(getAxiState(STK_L_DOWNRIGHT)){
+    DIR = BUCK_RIGHT;
+    spead = getAxiState(STK_L_DOWNRIGHT);
+
+  } else if(getAxiState(STK_R_RIGHT)){
+    DIR = RIGHT_ROTATE;
+    spead = getAxiState(STK_R_RIGHT);
+    
+  }else if(getAxiState(STK_R_LEFT)){
+    DIR = LEFT_ROTATE;
+    spead = getAxiState(STK_R_LEFT);
+
+  }else{
+    DIR = Stop; // どの方向にも入力がない場合は停止
+    spead= 0; // 速度も0に設定
+
+  } 
+  //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
+  MCU_move(DIR, spead, reverse); //MCUに移動命令
+}
 /* USER CODE END 4 */
 
 /**
@@ -730,7 +785,7 @@ void Error_Handler(void)
 {
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
-  MCU_move(Stop, 0);
+  MCU_move(Stop, 0, 0);
   __disable_irq();
   while (1)
   {
