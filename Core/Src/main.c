@@ -72,7 +72,7 @@ static void MX_TIM2_Init(void);
 void connection_monitoring(float); //ESPとの接続確認関数
 void unit_check(int wait_time);
 void ALL_LED_OFF(void);
-
+void handleMovement(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -93,40 +93,55 @@ static uint8_t data_ESP[8]; //ESPからのデータ
 static uint8_t data_PCU[8];
 static uint8_t data_MCU[8];
 static uint8_t data_RU[8];
+uint32_t data_type_ESP[2];
+int32_t data_type_PCU[2];
+uint32_t data_type_MCU[2];
+uint32_t data_type_RU[2];
 
 float connection_time[]={0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU,　RU｝
 int Y_ischenge = 0;
+uint32_t Rx1_index = 0;
+uint32_t Rx1_entry = 0;
  
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
   if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
     id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
     ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
-    //printf("code: %d id: %d\n\r",Rx1_unit_code,Rx1_unit_id);
-
+    ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
+    
     if(Rx1_unit_code==17 && Rx1_unit_id==1){ //WCD
       connection_time[0] = HAL_GetTick();
       for (int i = 0; i < 8; i++){
         data_ESP[i] = RxData1[i];
       }
+      data_type_ESP[0] = Rx1_index;
+      data_type_ESP[1] = Rx1_entry; 
       passCANCtrlData(data_ESP);
 
     }else if(Rx1_unit_code==18 && Rx1_unit_id==1){//PCU
       connection_time[1] = HAL_GetTick();
-      for (int i = 0; i < 8; i++){
+      for (int i = 1; i < 8; i++){
         data_PCU[i] = RxData1[i];
       }
+      data_type_PCU[0] = Rx1_index;
+      data_type_PCU[1] = Rx1_entry;
 
     }else if(Rx1_unit_code==16 && Rx1_unit_id==1){ //MCU
       connection_time[2] = HAL_GetTick();
-      for (int i = 0; i < 8; i++){
+      for (int i = 1; i < 8; i++){
         data_MCU[i] = RxData1[i];
       }
+      data_type_MCU[0] = Rx1_index;
+      data_type_MCU[1] = Rx1_entry;
 
     }else if(Rx1_unit_code==19 && Rx1_unit_id==1){ //RU
       connection_time[3] = HAL_GetTick();
-      for (int i = 0; i < 8; i++){
+      for (int i = 1; i < 8; i++){
         data_RU[i] = RxData1[i];
       }
+      data_type_RU[0] = Rx1_index;
+      data_type_RU[1] = Rx1_entry;
+
     }
   }
 }
@@ -210,7 +225,8 @@ int main(void)
   
   PCU_voltage_recovery(); //PCUの電圧を復帰
 
-  int last_BTN_Y_state = 0; //Yボタンの前回の状態
+  int last_reverse_state = 0; 
+
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
 
@@ -218,6 +234,9 @@ int main(void)
     handleMovement(); //移動　
     
     //---コントローラーのボタン処理---
+    if(data_type_MCU[0] == 3 && data_type_MCU[1] == 1 && data_MCU[2]==1){ //MCUから射出命令が来たら
+    }
+
     if (getBtnState(BTN_A)){
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
       RU_control(&hcan1, 1, 1, 1);
@@ -243,13 +262,13 @@ int main(void)
       RU_control(&hcan1, 1, 3, 0);
     }
   
-    if (getBtnState(BTN_Y) != last_BTN_Y_state){
+    if (getBtnState(BTN_Y) != last_reverse_state){
       if (getBtnState(BTN_Y)) {
+        HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
         reverse = !reverse;
       }
-      last_BTN_Y_state = getBtnState(BTN_Y);
+      last_reverse_state = getBtnState(BTN_Y);
     }
-    
     
     /* USER CODE END WHILE */
 
@@ -701,7 +720,7 @@ void connection_monitoring(float CHECK_INTERVAL) {
 
   int disconect = 0;
   for (int i=0 ; i<4 ; i++){
-    if(connection_state[i] == 1){
+    if(connection_state[i] == 0){
       disconect = 1;
       break;
     }
@@ -722,7 +741,7 @@ void ALL_LED_OFF(void){
   HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_RESET);
 }
 
-void handleMovement(){
+void handleMovement(void){
   int DIR = 0; //移動方向
   int spead = 0; //速度
 
@@ -775,6 +794,7 @@ void handleMovement(){
   //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
   MCU_move(DIR, spead, reverse); //MCUに移動命令
 }
+
 /* USER CODE END 4 */
 
 /**

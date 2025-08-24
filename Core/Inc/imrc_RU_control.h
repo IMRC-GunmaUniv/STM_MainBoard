@@ -8,6 +8,8 @@
 
 void RU_control(CAN_HandleTypeDef *ptr_hcan,int RU_unit_id,int relay_No,int relay_State);
 
+void RU_Toggle_relay(CAN_HandleTypeDef *ptr_hcan, int RU_unit_id, int relay_No, uint32_t ontime, uint32_t offtime);
+
 
 
 #endif
