@@ -96,16 +96,18 @@ static uint8_t RxData1[8];
 static uint32_t id;
 static uint8_t data_ESP[8]; //ESPからのデータ
 static uint8_t data_PCU[8];
-static uint8_t data_MCU[8];
+static uint8_t data_MCU1[8];
+static uint8_t data_MCU2[8];
 static uint8_t data_RU[8];
 uint32_t data_type_ESP[2];
 int32_t data_type_PCU[2];
-uint32_t data_type_MCU[2];
+uint32_t data_type_MCU1[2];//足回り
+uint32_t data_type_MCU2[2];//アーム
 uint32_t data_type_RU[2];
 
 
 uint32_t inertia_start_time = 0;
-float connection_time[]={0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU,　RU｝
+float connection_time[]={0,0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU1, MCU2,　RU｝
 int Y_ischenge = 0;
 uint32_t Rx1_index = 0;
 uint32_t Rx1_entry = 0;
@@ -134,16 +136,24 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
       data_type_PCU[0] = Rx1_index;
       data_type_PCU[1] = Rx1_entry;
 
-    }else if(Rx1_unit_code==16 && Rx1_unit_id==1){ //MCU
+    }else if(Rx1_unit_code==16 && Rx1_unit_id==1){ //MCU1
       connection_time[2] = HAL_GetTick();
       for (int i = 1; i < 8; i++){
-        data_MCU[i] = RxData1[i];
+        data_MCU1[i] = RxData1[i];
       }
-      data_type_MCU[0] = Rx1_index;
-      data_type_MCU[1] = Rx1_entry;
+      data_type_MCU1[0] = Rx1_index;
+      data_type_MCU1[1] = Rx1_entry;
+
+    }else if(Rx1_unit_code==16 && Rx1_unit_id==2){ //MCU2
+      connection_time[3] = HAL_GetTick();
+      for (int i = 1; i < 8; i++){
+        data_MCU2[i] = RxData1[i];
+      }
+      data_type_MCU2[0] = Rx1_index;
+      data_type_MCU2[1] = Rx1_entry;
 
     }else if(Rx1_unit_code==19 && Rx1_unit_id==1){ //RU
-      connection_time[3] = HAL_GetTick();
+      connection_time[4] = HAL_GetTick();
       for (int i = 1; i < 8; i++){
         data_RU[i] = RxData1[i];
       }
@@ -238,59 +248,49 @@ int main(void)
 
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
-    PCU_survival_signal(1000);
+    PCU_survival_signal(1000);  //PCUに生存信号送信
 
-    allBtnAxiState(); //ボタンの状態を更新
-    handleMovement(); //移動　
-    
     //---コントローラーのボタン処理---
+    allBtnAxiState(); //ボタンの状態を更新
+    handleMovement(); //移動（左右スティック）
     
-    if(data_type_MCU[0]==3 && data_type_MCU[1] == 0 && data_MCU[1] == 1){ //射出命令がMCUから来たら
+    //アーム（十字）　
+    if(getBtnState(BTN_UP)){ 
+      MCU_arm_control(&hcan1, 2, arm_injection);
+    }else if(getBtnState(BTN_LEFT)){
+      MCU_arm_control(&hcan1, 2, arm_aim);
+    }else if(getBtnState(BTN_RIGHT)){
+      MCU_arm_control(&hcan1, 2, arm_catch);
+    }else if(getBtnState(BTN_DOWN)){
+      MCU_arm_control(&hcan1, 2, arm_drag);
+    }else{
+      MCU_arm_control(&hcan1, 2, arm_null);
+    }
+
+    //（記号）
+    if (getBtnState(BTN_A)){//リレー 一番(◯)
+      RU_control(&hcan1, 1, 1, 1);
+    }else{
+      RU_control(&hcan1, 1, 1, 0);
+    }
+
+    if (getBtnState(BTN_B)){//(☓)
+   
+    }
+    if (getBtnState(BTN_X) != last_inertia_state) {//慣性制御(△)
+      MCU_injection(&hcan1, 1, 1);
+    }else{
+      MCU_injection(&hcan1, 1, 0);
+    }
+
+    if(data_type_MCU1[0]==3 && data_type_MCU1[1] == 0 && data_MCU1[1] == 1){ //射出命令がMCUから来たら
       inertia_flag = 1;
     } 
     if(inertia_flag){
       inertia_injection();
     }
     
-
-
-    if (getBtnState(BTN_A)){
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
-      RU_control(&hcan1, 1, 1, 1);
-    }else{      
-
-      HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_RESET); 
-      RU_control(&hcan1, 1, 1, 0);
-    }
-
-    if (getBtnState(BTN_B)){
-      HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
-      RU_control(&hcan1, 1, 2, 1);     
-    }else{
-      HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_RESET);
-      RU_control(&hcan1, 1, 2, 0);
-    }
-
-    if (getBtnState(BTN_X) != last_inertia_state) {//慣性制御
-      last_inertia_state = getBtnState(BTN_X);
-
-      if (last_inertia_state == 1) {// ボタンが押されたとき
-        HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-        MCU_injection(&hcan1, 0 ,1);
-
-        // uint8_t body[4] = {8,0,0,1};
-        // ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 4, body);
-      } else {// ボタンが離されたとき
-        HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-        MCU_injection(&hcan1, 0 ,0);
-
-        // uint8_t body[4] = {8,0,0,0};
-        // ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 4, body);
-
-      }
-    }
-  
-    if (getBtnState(BTN_Y) != Last_reverse_state){//移動反転
+    if (getBtnState(BTN_Y) != Last_reverse_state){//移動反転（□）
       if (getBtnState(BTN_Y)) {
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
         reverse = !reverse;
@@ -298,7 +298,6 @@ int main(void)
       Last_reverse_state = getBtnState(BTN_Y);
     }
 
-    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -656,12 +655,12 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-int device_list[4] = {0, 0, 0, 0}; // 接続中のデバイス配列　0:未接続　1:接続中
+int device_list[5] = {0, 0, 0, 0, 0}; // 接続中のデバイス配列｛WCD,　PCU,　MCU1, MCU2,　RU｝　0:未接続　1:接続中
 void unit_check(int wait_time){
   uint32_t start_time = HAL_GetTick();
   while(HAL_GetTick() - start_time < (wait_time+500)){
 
-    for(int i=0;i<4;i++){
+    for(int i=0;i<5;i++){
       if(connection_time[i]==0){
         connection_time[i] = HAL_GetTick();
         continue;
@@ -681,11 +680,15 @@ void unit_check(int wait_time){
             printf("PCU is disconnected\n\r");
             HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_SET);
             break;
-          case 2: //MCU
-            printf("MCU is disconnected\n\r");
+          case 2: //MCU1
+            printf("MCU1 is disconnected\n\r");
             HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_SET);
             break;
-          case 3: //RU
+          case 3: //MCU2
+            printf("MCU2 is disconnected\n\r");
+            HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_SET);
+            break;
+          case 4: //RU
             printf("RU is disconnected\n\r");
             HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_SET);
             break;
@@ -702,9 +705,9 @@ void unit_check(int wait_time){
 }
 
 void connection_monitoring(float CHECK_INTERVAL) {
-  int connection_state[4] = {0, 0, 0, 0}; // 接続確認用の時間配列　0:未接続　1:接続中
+  int connection_state[5] = {0, 0, 0, 0, 0}; // 接続確認用の時間配列　｛WCD,　PCU,　MCU1, MCU2,　RU｝ 0:未接続　1:接続中
 
-  for (int i = 0; i < 4; i++) {
+  for (int i = 0; i < 5; i++) {
     if (connection_time[i] == 0) {
       connection_time[i] = HAL_GetTick();
       continue;
@@ -725,15 +728,20 @@ void connection_monitoring(float CHECK_INTERVAL) {
           HAL_GPIO_WritePin(LED2_GPIO_Port, LED2_Pin, GPIO_PIN_SET);
           connection_state[1] = 0;
           break;
-        case 2: //MCU
-          printf("MCU is disconnected\n\r");
+        case 2: //MCU1
+          printf("MCU1 is disconnected\n\r");
           HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
           connection_state[2] = 0;  
           break;
-        case 3: //RU
+        case 3: //MCU2
+          printf("MCU2 is disconnected\n\r");
+          HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+          connection_state[3] = 0;  
+          break;
+        case 4: //RU
           printf("RU is disconnected\n\r");
           HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, GPIO_PIN_SET);
-          connection_state[3] = 0;
+          connection_state[4] = 0;
           break;
       }
 
@@ -748,7 +756,7 @@ void connection_monitoring(float CHECK_INTERVAL) {
   }
 
   int disconect = 0;
-  for (int i=0 ; i<4 ; i++){
+  for (int i=0 ; i<5 ; i++){
     if(connection_state[i] == 0){
       disconect = 1;
       break;

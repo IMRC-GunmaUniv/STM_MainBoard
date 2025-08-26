@@ -38,7 +38,11 @@ void PCU_relay_control(int relay_State){ //引数:( 0 or 1 )
     if(isChanged){
         pre_State = relay_State; // 前回の状態を更新
         uint8_t body[1] = { (uint8_t)relay_State };
-        //printf("PCU relay control: %d\n\r", body[0]);
+        if(body[0]==0){
+            printf("PCU_voltage_cutoff\n\r");
+        }else if(body[0]==1){
+            printf("PCU_voltage_recovery\n\r");
+        }
         ecan_sendPacketMtoU(PCU_hcan, 18, PCU_unit_id, 3, 0, 1, body);
 
         
@@ -50,13 +54,11 @@ static int State=0;
 
 void PCU_voltage_cutoff(void){ 
     State = 0;
-    printf("PCU voltage cutoff\n\r");
     PCU_relay_control(State);
 }
 
 void PCU_voltage_recovery(void){ 
     State = 1;
-
     PCU_relay_control(State);
 }
 

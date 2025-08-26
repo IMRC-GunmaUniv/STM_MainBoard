@@ -2,6 +2,7 @@
 #include "imrc_ecan.h"
 #include "stm32f4xx_hal.h"
 #include <string.h>
+#include <stdio.h>
 
 
 static int MCU_move_unit_id = 0;
@@ -52,11 +53,32 @@ void MCU_move(int DIR,int spead,int reverse){
 }   
 
 //---関東夏ロボコン2025---
-void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int enable){
-    uint8_t body[4] = {8,0,0,enable};
-    ecan_sendPacketMtoU(ptr_hcan, 16, unit_id, 3, 0, 4, body);
-
+int Last_is_injection_enable;
+void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int is_injection_enable){
+    if(is_injection_enable == Last_is_injection_enable){
+        return; 
+    }else{
+        uint8_t body[4] = {8,0,0,is_injection_enable};
+        printf("MCU injection command: %d\n\r", body[3]);
+        ecan_sendPacketMtoU(ptr_hcan, 16, unit_id, 3, 0, 4, body);
+        Last_is_injection_enable = is_injection_enable;
+    }
 }
+
+int last_arm_command = 0;
+void MCU_arm_control(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int command){
+    if(command == last_arm_command){
+        return; // コマンドが前回と同じ場合は何もしない
+    }else{
+        uint8_t body[1] = {command};
+        printf("MCU arm command: %d\n\r", body[0]);
+        ecan_sendPacketMtoU(arm_hcan, 16, arm_unit_id, 3, 0, 1, body);
+        last_arm_command = command;
+    }
+    
+}
+
+
 
 // void MCU_move_arm(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int DIR, int spead){
     

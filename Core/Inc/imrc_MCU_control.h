@@ -26,6 +26,12 @@ void MCU_move(int DIR,int spead, int reverse); //移動
 //---関東夏ロボコン2025---
 void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int enable); //慣性命令
 
+#define arm_null 0
+#define arm_injection 1
+#define arm_aim 2
+#define arm_catch 3
+#define arm_drag 4
+void MCU_arm_control(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int command); //アーム制御命令
 
 
 
