@@ -51,6 +51,13 @@ void MCU_move(int DIR,int spead,int reverse){
     }
 }   
 
+//---関東夏ロボコン2025---
+void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int enable){
+    uint8_t body[4] = {8,0,0,enable};
+    ecan_sendPacketMtoU(ptr_hcan, 16, unit_id, 3, 0, 4, body);
+
+}
+
 // void MCU_move_arm(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int DIR, int spead){
     
 

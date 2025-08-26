@@ -20,8 +20,11 @@
 #define RIGHT_ROTATE 10
 
 
-int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id, int max_speed);
-void MCU_move(int DIR,int spead, int reverse);
+int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id, int max_speed);//移動MCU基板　定義
+void MCU_move(int DIR,int spead, int reverse); //移動
+
+//---関東夏ロボコン2025---
+void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int enable); //慣性命令
 
 
 

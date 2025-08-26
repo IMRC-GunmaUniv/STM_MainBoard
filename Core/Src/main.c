@@ -73,6 +73,7 @@ void connection_monitoring(float); //ESPとの接続確認関数
 void unit_check(int wait_time);
 void ALL_LED_OFF(void);
 void handleMovement(void);
+void inertia_injection(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -85,6 +86,10 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 
 int reverse = 0; // 0:通常, 1:反転
 //---割り込み---
+int inertia_flag = 0;
+
+
+
 static uint32_t Rx1_unit_code,Rx1_unit_id;
 static CAN_RxHeaderTypeDef RxHeader1;
 static uint8_t RxData1[8];
@@ -98,10 +103,13 @@ int32_t data_type_PCU[2];
 uint32_t data_type_MCU[2];
 uint32_t data_type_RU[2];
 
+
+uint32_t inertia_start_time = 0;
 float connection_time[]={0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU,　RU｝
 int Y_ischenge = 0;
 uint32_t Rx1_index = 0;
 uint32_t Rx1_entry = 0;
+
  
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
   if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
@@ -208,8 +216,8 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
-  //接続中のユニットを探す
-  unit_check(3000);
+  
+  unit_check(3000);//接続中のユニットを探す
   
   //Start sign
   HAL_GPIO_TogglePin(BZ_GPIO_Port,BZ_Pin);
@@ -225,17 +233,26 @@ int main(void)
   
   PCU_voltage_recovery(); //PCUの電圧を復帰
 
-  int last_reverse_state = 0; 
+  int Last_reverse_state = 0; 
+  int last_inertia_state = 0;
 
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
+    PCU_survival_signal(1000);
 
     allBtnAxiState(); //ボタンの状態を更新
     handleMovement(); //移動　
     
     //---コントローラーのボタン処理---
-    if(data_type_MCU[0] == 3 && data_type_MCU[1] == 1 && data_MCU[2]==1){ //MCUから射出命令が来たら
+    
+    if(data_type_MCU[0]==3 && data_type_MCU[1] == 0 && data_MCU[1] == 1){ //射出命令がMCUから来たら
+      inertia_flag = 1;
+    } 
+    if(inertia_flag){
+      inertia_injection();
     }
+    
+
 
     if (getBtnState(BTN_A)){
       HAL_GPIO_WritePin(LED1_GPIO_Port, LED1_Pin, GPIO_PIN_SET);  
@@ -254,21 +271,33 @@ int main(void)
       RU_control(&hcan1, 1, 2, 0);
     }
 
-    if (getBtnState(BTN_X)){
-      HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-      RU_control(&hcan1, 1, 3, 1);   
-    }else{
-      HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
-      RU_control(&hcan1, 1, 3, 0);
+    if (getBtnState(BTN_X) != last_inertia_state) {//慣性制御
+      last_inertia_state = getBtnState(BTN_X);
+
+      if (last_inertia_state == 1) {// ボタンが押されたとき
+        HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+        MCU_injection(&hcan1, 0 ,1);
+
+        // uint8_t body[4] = {8,0,0,1};
+        // ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 4, body);
+      } else {// ボタンが離されたとき
+        HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_RESET);
+        MCU_injection(&hcan1, 0 ,0);
+
+        // uint8_t body[4] = {8,0,0,0};
+        // ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 4, body);
+
+      }
     }
   
-    if (getBtnState(BTN_Y) != last_reverse_state){
+    if (getBtnState(BTN_Y) != Last_reverse_state){//移動反転
       if (getBtnState(BTN_Y)) {
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
         reverse = !reverse;
       }
-      last_reverse_state = getBtnState(BTN_Y);
+      Last_reverse_state = getBtnState(BTN_Y);
     }
+
     
     /* USER CODE END WHILE */
 
@@ -629,7 +658,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 int device_list[4] = {0, 0, 0, 0}; // 接続中のデバイス配列　0:未接続　1:接続中
 void unit_check(int wait_time){
-  int start_time = HAL_GetTick();
+  uint32_t start_time = HAL_GetTick();
   while(HAL_GetTick() - start_time < (wait_time+500)){
 
     for(int i=0;i<4;i++){
@@ -793,6 +822,26 @@ void handleMovement(void){
   } 
   //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
   MCU_move(DIR, spead, reverse); //MCUに移動命令
+}
+
+void inertia_injection(void){
+  if (inertia_start_time == 0) {
+    inertia_start_time = HAL_GetTick();
+    
+  }
+
+  if ((HAL_GetTick() - inertia_start_time) < 1200){
+    
+    RU_control(&hcan1, 1, 3, 1); //慣性制御開始
+    //printf("Inertia Start %d\n\r",HAL_GetTick() - inertia_start_time);
+    
+  }else{
+    printf("Inertia End\n\r");
+    RU_control(&hcan1, 1, 3, 0); //慣性制御終了
+    inertia_start_time = 0;
+    inertia_flag = 0;
+
+  }
 }
 
 /* USER CODE END 4 */
