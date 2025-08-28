@@ -4,6 +4,8 @@
 #include <string.h>
 #include <stdio.h>
 
+#include "main.h"
+#include "imrc_RU_control.h"
 
 static int MCU_move_unit_id = 0;
 static CAN_HandleTypeDef *MCU_move_hcan;

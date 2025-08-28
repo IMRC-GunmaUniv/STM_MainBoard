@@ -73,7 +73,7 @@ void connection_monitoring(float); //ESPとの接続確認関数
 void unit_check(int wait_time);
 void ALL_LED_OFF(void);
 void handleMovement(void);
-void inertia_injection(void);
+void inertia_injection(int);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -244,7 +244,8 @@ int main(void)
   PCU_voltage_recovery(); //PCUの電圧を復帰
 
   int Last_reverse_state = 0; 
-  int last_inertia_state = 0;
+  int last_LED_state = 0;
+  int LED_state;
 
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
@@ -255,48 +256,61 @@ int main(void)
     handleMovement(); //移動（左右スティック）
     
     //アーム（十字）　
-    if(getBtnState(BTN_UP)){ 
-      MCU_arm_control(&hcan1, 2, arm_injection);
-    }else if(getBtnState(BTN_LEFT)){
+    if(getBtnState(BTN_UP)){ //射出開始
+      MCU_injection(&hcan1, 1, 1);
+      RU_control(&hcan1, 1, 4, 1); //リレー3を射出用に使用
+    }else{
+      MCU_injection(&hcan1, 1, 0); //射出停止
+      RU_control(&hcan1, 1, 4, 0);
+    }
+    
+    // if(getBtnState(BTN_DOWN)){
+    // }
+
+    if (getBtnState(BTN_LEFT) != Last_reverse_state){//動作反転
+      if (getBtnState(BTN_LEFT)) {
+        HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+        reverse = !reverse;
+      }
+      Last_reverse_state = getBtnState(BTN_LEFT);
+    }
+
+    if(getBtnState(BTN_RIGHT) == 1 && last_LED_state == 0){//LED点灯
+      if (getBtnState(BTN_RIGHT)) {
+        LED_state = !LED_state;
+        printf("%d",LED_state);
+        RU_control(&hcan1, 1, 4, LED_state);//昆虫完成
+      }
+      last_LED_state = getBtnState(BTN_RIGHT);
+    }
+
+    
+
+    //リレー制御　（トリガー）
+    if(getBtnState(BTN_L2)){//アーム開
+      RU_control(&hcan1, 1, 2, 0);
+    }else if(getBtnState(BTN_R2)){//アーム閉
+      RU_control(&hcan1, 1, 2, 1);//アーム閉
+    }
+
+
+    //アーム（記号） 
+    if (getBtnState(BTN_A)){//(◯)
       MCU_arm_control(&hcan1, 2, arm_aim);
-    }else if(getBtnState(BTN_RIGHT)){
+    }else if (getBtnState(BTN_B)){//(☓)
       MCU_arm_control(&hcan1, 2, arm_catch);
-    }else if(getBtnState(BTN_DOWN)){
+    }else if (getBtnState(BTN_X)) {//(△)
+      MCU_arm_control(&hcan1, 2, arm_injection); 
+    }else if (getBtnState(BTN_Y)){//（□）
       MCU_arm_control(&hcan1, 2, arm_drag);
     }else{
       MCU_arm_control(&hcan1, 2, arm_null);
     }
 
-    //（記号）
-    if (getBtnState(BTN_A)){//リレー 一番(◯)
-      RU_control(&hcan1, 1, 1, 1);
-    }else{
-      RU_control(&hcan1, 1, 1, 0);
-    }
-
-    if (getBtnState(BTN_B)){//(☓)
-   
-    }
-    if (getBtnState(BTN_X) != last_inertia_state) {//慣性制御(△)
-      MCU_injection(&hcan1, 1, 1);
-    }else{
-      MCU_injection(&hcan1, 1, 0);
-    }
-
-    if(data_type_MCU1[0]==3 && data_type_MCU1[1] == 0 && data_MCU1[1] == 1){ //射出命令がMCUから来たら
-      inertia_flag = 1;
-    } 
-    if(inertia_flag){
-      inertia_injection();
-    }
+    if(data_type_MCU1[0]==3 && data_type_MCU1[1] == 0 && data_MCU1[1] == 1) inertia_flag = 1; //射出命令がMCUから来たら
+    if(inertia_flag) inertia_injection(1);
     
-    if (getBtnState(BTN_Y) != Last_reverse_state){//移動反転（□）
-      if (getBtnState(BTN_Y)) {
-        HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-        reverse = !reverse;
-      }
-      Last_reverse_state = getBtnState(BTN_Y);
-    }
+
 
     /* USER CODE END WHILE */
 
@@ -372,9 +386,9 @@ static void MX_CAN1_Init(void)
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_7TQ;
   hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
-  hcan1.Init.TimeTriggeredMode = DISABLE;
+  hcan1.Init.TimeTriggeredMode = ENABLE;
   hcan1.Init.AutoBusOff = ENABLE;
-  hcan1.Init.AutoWakeUp = DISABLE;
+  hcan1.Init.AutoWakeUp = ENABLE;
   hcan1.Init.AutoRetransmission = ENABLE;
   hcan1.Init.ReceiveFifoLocked = DISABLE;
   hcan1.Init.TransmitFifoPriority = DISABLE;
@@ -656,7 +670,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 int device_list[5] = {0, 0, 0, 0, 0}; // 接続中のデバイス配列｛WCD,　PCU,　MCU1, MCU2,　RU｝　0:未接続　1:接続中
-void unit_check(int wait_time){
+void  unit_check(int wait_time){
   uint32_t start_time = HAL_GetTick();
   while(HAL_GetTick() - start_time < (wait_time+500)){
 
@@ -749,24 +763,27 @@ void connection_monitoring(float CHECK_INTERVAL) {
       HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_SET);
       HAL_Delay(150);
       HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_RESET);
+      ALL_LED_OFF();
 
     }else{
       connection_state[i] = 1;
     }
   }
 
-  int disconect = 0;
+  int disconect = 0;                      
   for (int i=0 ; i<5 ; i++){
     if(connection_state[i] == 0){
       disconect = 1;
       break;
     }
   }
+  printf("Disconect: %d\n\r", disconect);
   if (disconect) {
     PCU_voltage_cutoff();
 
   } else {
     PCU_voltage_recovery();
+
   }
 
 }
@@ -783,7 +800,16 @@ void handleMovement(void){
   int spead = 0; //速度
 
   //---移動　処理---
-  if(getAxiState(STK_L_RIGHT)){
+  
+  if(getAxiState(STK_R_RIGHT)){
+    DIR = RIGHT_ROTATE;
+    spead = getAxiState(STK_R_RIGHT);
+    
+  }else if(getAxiState(STK_R_LEFT)){
+    DIR = LEFT_ROTATE;
+    spead = getAxiState(STK_R_LEFT);
+
+  }else if(getAxiState(STK_L_RIGHT)){
     DIR = RIGHT;
     spead= getAxiState(STK_L_RIGHT);
 
@@ -815,24 +841,17 @@ void handleMovement(void){
     DIR = BUCK_RIGHT;
     spead = getAxiState(STK_L_DOWNRIGHT);
 
-  } else if(getAxiState(STK_R_RIGHT)){
-    DIR = RIGHT_ROTATE;
-    spead = getAxiState(STK_R_RIGHT);
-    
-  }else if(getAxiState(STK_R_LEFT)){
-    DIR = LEFT_ROTATE;
-    spead = getAxiState(STK_R_LEFT);
-
-  }else{
+  } else{
     DIR = Stop; // どの方向にも入力がない場合は停止
     spead= 0; // 速度も0に設定
 
   } 
+
   //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
   MCU_move(DIR, spead, reverse); //MCUに移動命令
 }
 
-void inertia_injection(void){
+void inertia_injection(int relay_NO){
   if (inertia_start_time == 0) {
     inertia_start_time = HAL_GetTick();
     
@@ -840,12 +859,12 @@ void inertia_injection(void){
 
   if ((HAL_GetTick() - inertia_start_time) < 1200){
     
-    RU_control(&hcan1, 1, 3, 1); //慣性制御開始
-    //printf("Inertia Start %d\n\r",HAL_GetTick() - inertia_start_time);
+    RU_control(&hcan1, 1, relay_NO, 1); //慣性制御開始
+    printf("Inertia Start %d\n\r",HAL_GetTick() - inertia_start_time);
     
   }else{
     printf("Inertia End\n\r");
-    RU_control(&hcan1, 1, 3, 0); //慣性制御終了
+    RU_control(&hcan1, 1, relay_NO, 0); //慣性制御終了
     inertia_start_time = 0;
     inertia_flag = 0;
 
