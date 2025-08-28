@@ -247,6 +247,9 @@ int main(void)
   int last_LED_state = 0;
   int LED_state;
 
+  int catch_relay_port = 2; //RUのキャッチリレー番号
+  int injection_relay_port = 1; //RUの射出リレー番号
+  int LED_relay_port = 4; //RUのLEDリレー番号
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
     PCU_survival_signal(1000);  //PCUに生存信号送信
@@ -255,61 +258,60 @@ int main(void)
     allBtnAxiState(); //ボタンの状態を更新
     handleMovement(); //移動（左右スティック）
     
-    //アーム（十字）　
+    //--アーム（十字）--
     if(getBtnState(BTN_UP)){ //射出開始
       MCU_injection(&hcan1, 1, 1);
-      RU_control(&hcan1, 1, 4, 1); //リレー3を射出用に使用
     }else{
       MCU_injection(&hcan1, 1, 0); //射出停止
-      RU_control(&hcan1, 1, 4, 0);
     }
     
     // if(getBtnState(BTN_DOWN)){
     // }
 
-    if (getBtnState(BTN_LEFT) != Last_reverse_state){//動作反転
-      if (getBtnState(BTN_LEFT)) {
+    int reverse_BTN = getBtnState(BTN_LEFT);//動作反転
+    if (reverse_BTN != Last_reverse_state){
+      if (reverse_BTN) {
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
         reverse = !reverse;
       }
-      Last_reverse_state = getBtnState(BTN_LEFT);
+      Last_reverse_state = reverse_BTN;
     }
 
-    if(getBtnState(BTN_RIGHT) == 1 && last_LED_state == 0){//LED点灯
-      if (getBtnState(BTN_RIGHT)) {
+    int LED_BTN = getBtnState(BTN_RIGHT);//LED点灯
+    if(LED_BTN != last_LED_state){
+      if (LED_BTN) {
         LED_state = !LED_state;
         printf("%d",LED_state);
-        RU_control(&hcan1, 1, 4, LED_state);//昆虫完成
+        RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
       }
-      last_LED_state = getBtnState(BTN_RIGHT);
-    }
-
-    
-
-    //リレー制御　（トリガー）
-    if(getBtnState(BTN_L2)){//アーム開
-      RU_control(&hcan1, 1, 2, 0);
-    }else if(getBtnState(BTN_R2)){//アーム閉
-      RU_control(&hcan1, 1, 2, 1);//アーム閉
+      last_LED_state = LED_BTN;
     }
 
 
-    //アーム（記号） 
-    if (getBtnState(BTN_A)){//(◯)
+    //--アーム（記号）-- 
+    if (getBtnState(BTN_A)){//アーム　狙う　(◯)
       MCU_arm_control(&hcan1, 2, arm_aim);
-    }else if (getBtnState(BTN_B)){//(☓)
+    }else if (getBtnState(BTN_B)){//アーム　キャッチ　(☓)
       MCU_arm_control(&hcan1, 2, arm_catch);
-    }else if (getBtnState(BTN_X)) {//(△)
+    }else if (getBtnState(BTN_X)) {//アーム　射出　(△)
       MCU_arm_control(&hcan1, 2, arm_injection); 
-    }else if (getBtnState(BTN_Y)){//（□）
+    }else if (getBtnState(BTN_Y)){//アーム　引きずる（□）
       MCU_arm_control(&hcan1, 2, arm_drag);
     }else{
       MCU_arm_control(&hcan1, 2, arm_null);
     }
 
     if(data_type_MCU1[0]==3 && data_type_MCU1[1] == 0 && data_MCU1[1] == 1) inertia_flag = 1; //射出命令がMCUから来たら
-    if(inertia_flag) inertia_injection(1);
+    if(inertia_flag) inertia_injection(injection_relay_port); //慣性制御
+
     
+
+    //リレー制御　（トリガー）
+    if(getBtnState(BTN_L2)){//アーム開
+      RU_control(&hcan1, 1, catch_relay_port, 0);
+    }else if(getBtnState(BTN_R2)){//アーム閉
+      RU_control(&hcan1, 1, catch_relay_port, 1);//アーム閉
+    }
 
 
     /* USER CODE END WHILE */
@@ -386,9 +388,9 @@ static void MX_CAN1_Init(void)
   hcan1.Init.SyncJumpWidth = CAN_SJW_1TQ;
   hcan1.Init.TimeSeg1 = CAN_BS1_7TQ;
   hcan1.Init.TimeSeg2 = CAN_BS2_2TQ;
-  hcan1.Init.TimeTriggeredMode = ENABLE;
+  hcan1.Init.TimeTriggeredMode = DISABLE;
   hcan1.Init.AutoBusOff = ENABLE;
-  hcan1.Init.AutoWakeUp = ENABLE;
+  hcan1.Init.AutoWakeUp = DISABLE;
   hcan1.Init.AutoRetransmission = ENABLE;
   hcan1.Init.ReceiveFifoLocked = DISABLE;
   hcan1.Init.TransmitFifoPriority = DISABLE;
@@ -777,7 +779,7 @@ void connection_monitoring(float CHECK_INTERVAL) {
       break;
     }
   }
-  printf("Disconect: %d\n\r", disconect);
+  //printf("Disconect: %d\n\r", disconect);
   if (disconect) {
     PCU_voltage_cutoff();
 
@@ -867,7 +869,7 @@ void inertia_injection(int relay_NO){
     RU_control(&hcan1, 1, relay_NO, 0); //慣性制御終了
     inertia_start_time = 0;
     inertia_flag = 0;
-
+  
   }
 }
 
