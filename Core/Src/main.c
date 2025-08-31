@@ -260,13 +260,25 @@ int main(void)
     
     //--アーム（十字）--
     if(getBtnState(BTN_UP)){ //射出開始
-      MCU_injection(&hcan1, 1, 1);
-    }else{
-      MCU_injection(&hcan1, 1, 0); //射出停止
+      if(getBtnState(BTN_L2)){
+        LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 10); //ロック
+        HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+        
+      }else if(getBtnState(BTN_R2)){
+        LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 90); //ロック外し
+        printf("90\n\r");
+      }
+
+      ALL_LED_OFF();
     }
     
-    // if(getBtnState(BTN_DOWN)){
-    // }
+    if(getBtnState(BTN_DOWN)){
+      if(getBtnState(BTN_L2)){//慣性制御開始
+        RU_control(&hcan1, 1, injection_relay_port, 1);//射出リレーON
+      }else if(!getBtnState(BTN_R2)){//慣性制御終了
+        RU_control(&hcan1, 1, injection_relay_port, 0);//射出リレーOFF
+      }
+    }
 
     int reverse_BTN = getBtnState(BTN_LEFT);//動作反転
     if (reverse_BTN != Last_reverse_state){
@@ -300,18 +312,14 @@ int main(void)
     }else{
       MCU_arm_control(&hcan1, 2, arm_null);
     }
-
-    if(data_type_MCU1[0]==3 && data_type_MCU1[1] == 0 && data_MCU1[1] == 1) inertia_flag = 1; //射出命令がMCUから来たら
-    if(inertia_flag) inertia_injection(injection_relay_port); //慣性制御
-
     
 
     //リレー制御　（トリガー）
-    if(getBtnState(BTN_L2)){//アーム開
-      RU_control(&hcan1, 1, catch_relay_port, 0);
-    }else if(getBtnState(BTN_R2)){//アーム閉
-      RU_control(&hcan1, 1, catch_relay_port, 1);//アーム閉
-    }
+    // if(getBtnState(BTN_L2)){//アーム開
+    //   RU_control(&hcan1, 1, catch_relay_port, 0);
+    // }else if(getBtnState(BTN_R2)){//アーム閉
+    //   RU_control(&hcan1, 1, catch_relay_port, 1);//アーム閉
+    // }
 
 
     /* USER CODE END WHILE */
