@@ -69,11 +69,15 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 
+//プロトタイプ宣言
 void connection_monitoring(float); //ESPとの接続確認関数
 void unit_check(int wait_time);
 void ALL_LED_OFF(void);
 void handleMovement(void);
 void inertia_injection(int);
+void injection_Init(int, TIM_HandleTypeDef *, uint32_t );
+void injection_set(int*);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -83,13 +87,16 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
   return ch;
 }
 
-
+//プログラム内　グローバル変数
 int reverse = 0; // 0:通常, 1:反転
 //---割り込み---
 int inertia_flag = 0;
+uint32_t inertia_start_time = 0;
+int injection_state = 0; //射出装填時:1 非装填時:0
+int is_start_injection_release = 0;
+int is_start_injection_set = 0;
 
-
-
+//割り込み
 static uint32_t Rx1_unit_code,Rx1_unit_id;
 static CAN_RxHeaderTypeDef RxHeader1;
 static uint8_t RxData1[8];
@@ -104,15 +111,9 @@ int32_t data_type_PCU[2];
 uint32_t data_type_MCU1[2];//足回り
 uint32_t data_type_MCU2[2];//アーム
 uint32_t data_type_RU[2];
-
-
-uint32_t inertia_start_time = 0;
 float connection_time[]={0,0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU1, MCU2,　RU｝
-int Y_ischenge = 0;
 uint32_t Rx1_index = 0;
 uint32_t Rx1_entry = 0;
-
- 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
   if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
     id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
@@ -163,6 +164,26 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
     }
   }
 }
+
+//ピン命名
+#define GPIO_D1_TIM_CN TIM_CHANNEL_1
+#define GPIO_D3_TIM_CN TIM_CHANNEL_2
+#define GPIO_D4_TIM_CN TIM_CHANNEL_3
+TIM_HandleTypeDef *GPIO_D1_TIM_HT = &htim2; 
+TIM_HandleTypeDef *GPIO_D3_TIM_HT = &htim2; 
+TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3; 
+
+// #define GPIO_C2_TIM_CN TIM_CHANNEL_1 //未使用
+// #define GPIO_C3_TIM_CN TIM_CHANNEL_2 //未使用
+// #define GPIO_C4_TIM_CN TIM_CHANNEL_3 //未使用
+// TIM_HandleTypeDef *GPIO_C2_TIM_HT = &htim2; //未使用
+// TIM_HandleTypeDef *GPIO_C3_TIM_HT = &htim2; //未使用
+// TIM_HandleTypeDef *GPIO_C4_TIM_HT = &htim2; //未使用
+
+//入力ピン　定義
+int catch_relay_port = 2; //RUのキャッチリレー番号
+int L_loading_valve = 1; //RUの射出リレー番号
+int LED_relay_port = 4; //RUのLEDリレー番号
 
 
 /* USER CODE END Private
@@ -226,7 +247,10 @@ int main(void)
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
 
-  
+  //射出
+  injection_Init(L_loading_valve, GPIO_C2_TIM_HT, GPIO_C2_TIM_CN);
+  LD_220MG_SetAngle(GPIO_C2_TIM_HT, GPIO_C2_TIM_CN, 90); //ロック外し 初期位置
+   
   unit_check(3000);//接続中のユニットを探す
   
   //Start sign
@@ -243,13 +267,12 @@ int main(void)
   
   PCU_voltage_recovery(); //PCUの電圧を復帰
 
+  //ローカル変数
   int Last_reverse_state = 0; 
   int last_LED_state = 0;
   int LED_state;
 
-  int catch_relay_port = 2; //RUのキャッチリレー番号
-  int injection_relay_port = 1; //RUの射出リレー番号
-  int LED_relay_port = 4; //RUのLEDリレー番号
+
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
     PCU_survival_signal(1000);  //PCUに生存信号送信
@@ -259,28 +282,28 @@ int main(void)
     handleMovement(); //移動（左右スティック）
     
     //--アーム（十字）--
-    if(getBtnState(BTN_UP)){ //射出開始
-      if(getBtnState(BTN_L2)){
-        LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 10); //ロック
-        HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+    // if(getBtnState(BTN_UP)){ //射出 ロック
+    //   if(getBtnState(BTN_L2)){
+    //     LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 10); //ロック
         
-      }else if(getBtnState(BTN_R2)){
-        LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 90); //ロック外し
-        printf("90\n\r");
-      }
+    //     HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+        
+    //   }else if(getBtnState(BTN_R2)){
+    //     LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 90); //ロック外し
 
-      ALL_LED_OFF();
-    }
+    //   }
+
+    // }
     
-    if(getBtnState(BTN_DOWN)){
-      if(getBtnState(BTN_L2)){//慣性制御開始
-        RU_control(&hcan1, 1, injection_relay_port, 1);//射出リレーON
-      }else if(!getBtnState(BTN_R2)){//慣性制御終了
-        RU_control(&hcan1, 1, injection_relay_port, 0);//射出リレーOFF
-      }
-    }
+    int injection_set_BTN = getBtnState(BTN_UP);  //射出装填
+    if(injection_set_BTN) is_start_injection_set = 1;
+    if(is_start_injection_set) injection_set(&is_start_injection_set);
 
-    int reverse_BTN = getBtnState(BTN_LEFT);//動作反転
+    int injection_release_BTN = getBtnState(BTN_DOWN);  //射出!!!
+    if(injection_release_BTN) is_start_injection_release = 1;
+    if(is_start_injection_release) injection_release(&is_start_injection_release);
+
+    int reverse_BTN = getBtnState(BTN_LEFT);  //動作反転
     if (reverse_BTN != Last_reverse_state){
       if (reverse_BTN) {
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
@@ -289,7 +312,7 @@ int main(void)
       Last_reverse_state = reverse_BTN;
     }
 
-    int LED_BTN = getBtnState(BTN_RIGHT);//LED点灯
+    int LED_BTN = getBtnState(BTN_RIGHT); //昆虫完成
     if(LED_BTN != last_LED_state){
       if (LED_BTN) {
         LED_state = !LED_state;
@@ -680,7 +703,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 int device_list[5] = {0, 0, 0, 0, 0}; // 接続中のデバイス配列｛WCD,　PCU,　MCU1, MCU2,　RU｝　0:未接続　1:接続中
-void  unit_check(int wait_time){
+void  unit_check(int wait_time){//接続中のユニットを探す
   uint32_t start_time = HAL_GetTick();
   while(HAL_GetTick() - start_time < (wait_time+500)){
 
@@ -728,7 +751,7 @@ void  unit_check(int wait_time){
   
 }
 
-void connection_monitoring(float CHECK_INTERVAL) {
+void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続確認
   int connection_state[5] = {0, 0, 0, 0, 0}; // 接続確認用の時間配列　｛WCD,　PCU,　MCU1, MCU2,　RU｝ 0:未接続　1:接続中
 
   for (int i = 0; i < 5; i++) {
@@ -798,14 +821,14 @@ void connection_monitoring(float CHECK_INTERVAL) {
 
 }
 
-void ALL_LED_OFF(void){
+void ALL_LED_OFF(void){//全LED消灯
   HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_RESET);
   HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_RESET);
 }
 
-void handleMovement(void){
+void handleMovement(void){//移動　スティック操作
   int DIR = 0; //移動方向
   int spead = 0; //速度
 
@@ -861,7 +884,7 @@ void handleMovement(void){
   MCU_move(DIR, spead, reverse); //MCUに移動命令
 }
 
-void inertia_injection(int relay_NO){
+void inertia_injection(int relay_NO){//慣性射出
   if (inertia_start_time == 0) {
     inertia_start_time = HAL_GetTick();
     
@@ -879,6 +902,51 @@ void inertia_injection(int relay_NO){
     inertia_flag = 0;
   
   }
+}
+
+int L_loading_valve;
+TIM_HandleTypeDef *L_Lock_Servo_HT;
+uint32_t L_Lock_Servo_CN;
+void injection_Init(int __L_loading_valve, TIM_HandleTypeDef *__L_Lock_Servo_HT, uint32_t __L_Lock_Servo_CN){
+  L_loading_valve = __L_loading_valve;
+  L_Lock_Servo_HT = __L_Lock_Servo_HT;
+  L_Lock_Servo_CN = __L_Lock_Servo_CN;
+}
+
+
+uint32_t injection_start_time = 0;
+void injection_set(int *is_start){
+  if(injection_start_time <= 0){//1
+    printf("injection_set");
+    injection_start_time  = HAL_GetTick();
+    RU_control(&hcan1, 1, L_loading_valve, 1); //射出ソレノイド　伸ばす
+    MCU_arm_control(&hcan1, 2, arm_injection); 
+  }
+ 
+  uint32_t check_time = HAL_GetTick() - injection_start_time;
+  if(check_time >=2500){//3
+    RU_control(&hcan1, 1, L_loading_valve, 0); //射出ソレノイド　戻す
+    injection_start_time = 0;
+    injection_state = 1; //装填
+    *is_start = 0;
+    return;
+
+  }else if(check_time >=1500){//2
+    LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 10); //射出ロック
+    
+  }
+}
+
+void injection_release(int *is_start){
+  *is_start = 0;
+  if(injection_state != 1){
+    return;
+  }else{
+    printf("injection_release %d\n\r",injection_state);
+    LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 90);  //ロック解除
+    injection_state = 0; //非装填
+    return;
+  }  
 }
 
 /* USER CODE END 4 */

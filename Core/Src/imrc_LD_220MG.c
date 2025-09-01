@@ -15,6 +15,7 @@ void LD_220MG_SetAngle(TIM_HandleTypeDef *htim, uint32_t CHANNEL, int angle){//�
         ccr_value = 2450; // 最大値の制限
     }
 
+    printf("send Angle:%d \n\r", angle);
     __HAL_TIM_SET_COMPARE(htim, CHANNEL, ccr_value);
 
 }
