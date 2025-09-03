@@ -53,6 +53,7 @@ CAN_HandleTypeDef hcan1;
 CAN_HandleTypeDef hcan2;
 
 TIM_HandleTypeDef htim2;
+TIM_HandleTypeDef htim3;
 
 UART_HandleTypeDef huart3;
 
@@ -67,6 +68,7 @@ static void MX_CAN1_Init(void);
 static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
 //プロトタイプ宣言
@@ -75,8 +77,9 @@ void unit_check(int wait_time);
 void ALL_LED_OFF(void);
 void handleMovement(void);
 void inertia_injection(int);
-void injection_Init(int, TIM_HandleTypeDef *, uint32_t );
+void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef *, uint32_t );
 void injection_set(int*);
+void injection_release(int*);
 
 /* USER CODE END PFP */
 
@@ -89,12 +92,16 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 
 //プログラム内　グローバル変数
 int reverse = 0; // 0:通常, 1:反転
-//---割り込み---
 int inertia_flag = 0;
 uint32_t inertia_start_time = 0;
-int injection_state = 0; //射出装填時:1 非装填時:0
+int injection_state = 0; //射出チャージ時:1 非チャージ時:0
 int is_start_injection_release = 0;
 int is_start_injection_set = 0;
+int L_loading_valve;
+TIM_HandleTypeDef *L_Lock_Servo_HT;
+uint32_t L_Lock_Servo_CN;
+TIM_HandleTypeDef *R_Lock_Servo_HT;
+uint32_t R_Lock_Servo_CN;
 
 //割り込み
 static uint32_t Rx1_unit_code,Rx1_unit_id;
@@ -108,8 +115,8 @@ static uint8_t data_MCU2[8];
 static uint8_t data_RU[8];
 uint32_t data_type_ESP[2];
 int32_t data_type_PCU[2];
-uint32_t data_type_MCU1[2];//足回り
-uint32_t data_type_MCU2[2];//アーム
+uint32_t data_type_MCU1[2];//足回り [index, entry]
+uint32_t data_type_MCU2[2];//アーム [index, entry]
 uint32_t data_type_RU[2];
 float connection_time[]={0,0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU1, MCU2,　RU｝
 uint32_t Rx1_index = 0;
@@ -166,9 +173,9 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
 }
 
 //ピン命名
-#define GPIO_D1_TIM_CN TIM_CHANNEL_1
-#define GPIO_D3_TIM_CN TIM_CHANNEL_2
-#define GPIO_D4_TIM_CN TIM_CHANNEL_3
+#define GPIO_D1_TIM_CN TIM_CHANNEL_4
+#define GPIO_D3_TIM_CN TIM_CHANNEL_1
+#define GPIO_D4_TIM_CN TIM_CHANNEL_1
 TIM_HandleTypeDef *GPIO_D1_TIM_HT = &htim2; 
 TIM_HandleTypeDef *GPIO_D3_TIM_HT = &htim2; 
 TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3; 
@@ -181,8 +188,9 @@ TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3;
 // TIM_HandleTypeDef *GPIO_C4_TIM_HT = &htim2; //未使用
 
 //入力ピン　定義
-int catch_relay_port = 2; //RUのキャッチリレー番号
-int L_loading_valve = 1; //RUの射出リレー番号
+int L_loading_valve = 1; //RUの射出Lリレー番号
+int R_loading_valve = 2; //RUの射出Rリレー番号
+int catch_relay_port = 3; //RUのキャッチリレー番号
 int LED_relay_port = 4; //RUのLEDリレー番号
 
 
@@ -224,6 +232,7 @@ int main(void)
   MX_CAN2_Init();
   MX_USART3_UART_Init();
   MX_TIM2_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   
   //CAN Setting
@@ -243,13 +252,16 @@ int main(void)
   PCU_Init(&hcan1, 1);
   
   //PWM
+  // HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1); //未使用
+  // HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2); //未使用
+  // HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3); //未使用
+  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
   HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_2);
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_3);
+  HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
   //射出
-  injection_Init(L_loading_valve, GPIO_C2_TIM_HT, GPIO_C2_TIM_CN);
-  LD_220MG_SetAngle(GPIO_C2_TIM_HT, GPIO_C2_TIM_CN, 90); //ロック外し 初期位置
+  injection_Init(L_loading_valve, GPIO_D1_TIM_HT, GPIO_D1_TIM_CN, R_loading_valve, GPIO_D3_TIM_HT, GPIO_D3_TIM_CN);
+  LD_220MG_SetAngle(L_Lock_Servo_HT, L_Lock_Servo_CN, 90); //ロック外し 初期位置
    
   unit_check(3000);//接続中のユニットを探す
   
@@ -522,10 +534,63 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
+  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_4) != HAL_OK)
+  {
+    Error_Handler();
+  }
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
   HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_OC_InitTypeDef sConfigOC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 59;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 2499;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigOC.OCMode = TIM_OCMODE_PWM1;
+  sConfigOC.Pulse = 0;
+  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
+  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
+  if (HAL_TIM_PWM_ConfigChannel(&htim3, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+  HAL_TIM_MspPostInit(&htim3);
 
 }
 
@@ -587,8 +652,7 @@ static void MX_GPIO_Init(void)
                           |LED2_Pin|BZ_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_D1_Pin|GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin
-                          |LED4_Pin, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_C2_Pin|GPIO_D2_Pin|LED4_Pin, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, LED1_Pin|CAN_LED2_Pin|CAN_LED1_Pin, GPIO_PIN_RESET);
@@ -604,10 +668,8 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : GPIO_D1_Pin GPIO_D2_Pin GPIO_D3_Pin GPIO_D4_Pin
-                           LED4_Pin */
-  GPIO_InitStruct.Pin = GPIO_D1_Pin|GPIO_D2_Pin|GPIO_D3_Pin|GPIO_D4_Pin
-                          |LED4_Pin;
+  /*Configure GPIO pins : GPIO_C2_Pin GPIO_D2_Pin LED4_Pin */
+  GPIO_InitStruct.Pin = GPIO_C2_Pin|GPIO_D2_Pin|LED4_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -880,6 +942,8 @@ void handleMovement(void){//移動　スティック操作
 
   } 
 
+  if(getBtnState(BTN_L2)) spead = 30;
+  if(getBtnState(BTN_R2)) spead = 60;
   //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
   MCU_move(DIR, spead, reverse); //MCUに移動命令
 }
@@ -893,7 +957,7 @@ void inertia_injection(int relay_NO){//慣性射出
   if ((HAL_GetTick() - inertia_start_time) < 1200){
     
     RU_control(&hcan1, 1, relay_NO, 1); //慣性制御開始
-    printf("Inertia Start %d\n\r",HAL_GetTick() - inertia_start_time);
+    //printf("Inertia Start %d\n\r",HAL_GetTick() - inertia_start_time);
     
   }else{
     printf("Inertia End\n\r");
@@ -904,40 +968,53 @@ void inertia_injection(int relay_NO){//慣性射出
   }
 }
 
-int L_loading_valve;
-TIM_HandleTypeDef *L_Lock_Servo_HT;
-uint32_t L_Lock_Servo_CN;
-void injection_Init(int __L_loading_valve, TIM_HandleTypeDef *__L_Lock_Servo_HT, uint32_t __L_Lock_Servo_CN){
+void injection_Init(int __L_loading_valve, TIM_HandleTypeDef *__L_Lock_Servo_HT, uint32_t __L_Lock_Servo_CN, int __R_loading_valve, TIM_HandleTypeDef *__R_Lock_Servo_HT, uint32_t __R_Lock_Servo_CN){
   L_loading_valve = __L_loading_valve;
   L_Lock_Servo_HT = __L_Lock_Servo_HT;
   L_Lock_Servo_CN = __L_Lock_Servo_CN;
+  R_loading_valve = __R_loading_valve;
+  R_Lock_Servo_HT = __R_Lock_Servo_HT;
+  R_Lock_Servo_CN = __R_Lock_Servo_CN;
 }
-
 
 uint32_t injection_start_time = 0;
-void injection_set(int *is_start){
-  if(injection_start_time <= 0){//1
-    printf("injection_set");
-    injection_start_time  = HAL_GetTick();
-    RU_control(&hcan1, 1, L_loading_valve, 1); //射出ソレノイド　伸ばす
-    MCU_arm_control(&hcan1, 2, arm_injection); 
-  }
+void injection_set(int *is_start){//射出セット　自動
+  if(injection_state == 0){//チャージされていないとき
+    if(injection_start_time <= 0){//1
+      printf("injection_set");
+      injection_start_time  = HAL_GetTick();
+      RU_control(&hcan1, 1, L_loading_valve, 1); //射出ソレノイド　伸ばす
+      MCU_arm_control(&hcan1, 2, arm_injection); 
+    }
  
-  uint32_t check_time = HAL_GetTick() - injection_start_time;
-  if(check_time >=2500){//3
-    RU_control(&hcan1, 1, L_loading_valve, 0); //射出ソレノイド　戻す
-    injection_start_time = 0;
-    injection_state = 1; //装填
-    *is_start = 0;
-    return;
-
-  }else if(check_time >=1500){//2
-    LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 10); //射出ロック
-    
+    //--射出機構　チャージ--
+    uint32_t check_time = HAL_GetTick() - injection_start_time;
+    if(check_time >=2500){//3
+      RU_control(&hcan1, 1, L_loading_valve, 0); //射出ソレノイド　戻す
+      injection_start_time = 0;
+      injection_state = 1; //チャージ完了
+      *is_start = 0; //装填プログラム実装でき次第削除
+      return; //装填プログラム実装でき次第削除
+    }else if(check_time >=1500){//2
+      LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 10); //射出ロック
+      
+    }
   }
+
+  // if(getAxiState(BTN_LEFT) == 1 || getAxiState(BTN_RIGHT) == 1 || getAxiState(BTN_RIGHT) == 1){
+  //   *is_start = 0; //装填プログラム実装でき次第削除
+  //   return; //装填プログラム実装でき次第削除
+  // }
+  
+  //--装填--
+  // if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == 1 && injection_state == 1){
+  //   RU_control(&hcan1, 1, catch_relay_port ,1);
+  //   *is_start = 0;
+  // }
+
 }
 
-void injection_release(int *is_start){
+void injection_release(int *is_start){//射出!!　
   *is_start = 0;
   if(injection_state != 1){
     return;
