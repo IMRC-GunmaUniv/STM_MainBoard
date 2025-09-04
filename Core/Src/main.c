@@ -262,6 +262,7 @@ int main(void)
   //射出
   injection_Init(L_loading_valve, GPIO_D1_TIM_HT, GPIO_D1_TIM_CN, R_loading_valve, GPIO_D3_TIM_HT, GPIO_D3_TIM_CN);
   LD_220MG_SetAngle(L_Lock_Servo_HT, L_Lock_Servo_CN, 90); //ロック外し 初期位置
+  LD_220MG_SetAngle(R_Lock_Servo_HT, R_Lock_Servo_CN, 90); //ロック外し 初期位置
    
   unit_check(3000);//接続中のユニットを探す
   
@@ -984,6 +985,7 @@ void injection_set(int *is_start){//射出セット　自動
       printf("injection_set");
       injection_start_time  = HAL_GetTick();
       RU_control(&hcan1, 1, L_loading_valve, 1); //射出ソレノイド　伸ばす
+      RU_control(&hcan1, 1, R_loading_valve, 1); //射出ソレノイド　伸ばす
       MCU_arm_control(&hcan1, 2, arm_injection); 
     }
  
@@ -991,12 +993,14 @@ void injection_set(int *is_start){//射出セット　自動
     uint32_t check_time = HAL_GetTick() - injection_start_time;
     if(check_time >=2500){//3
       RU_control(&hcan1, 1, L_loading_valve, 0); //射出ソレノイド　戻す
+      RU_control(&hcan1, 1, R_loading_valve, 0); //射出ソレノイド　戻す
       injection_start_time = 0;
       injection_state = 1; //チャージ完了
       *is_start = 0; //装填プログラム実装でき次第削除
       return; //装填プログラム実装でき次第削除
     }else if(check_time >=1500){//2
       LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 10); //射出ロック
+      LD_220MG_SetAngle(&htim2,  TIM_CHANNEL_1, 170); //射出ロック
       
     }
   }
@@ -1021,6 +1025,7 @@ void injection_release(int *is_start){//射出!!　
   }else{
     printf("injection_release %d\n\r",injection_state);
     LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 90);  //ロック解除
+    LD_220MG_SetAngle(R_Lock_Servo_HT,  R_Lock_Servo_CN, 90);  //ロック解除
     injection_state = 0; //非装填
     return;
   }  
