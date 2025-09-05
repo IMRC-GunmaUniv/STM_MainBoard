@@ -78,8 +78,8 @@ void ALL_LED_OFF(void);
 void handleMovement(void);
 void inertia_injection(int);
 void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef *, uint32_t );
-void injection_set(int*);
-void injection_release(int*);
+void injection_set(int *, bool, bool);
+void injection_release(int*, bool, bool);
 
 /* USER CODE END PFP */
 
@@ -94,14 +94,15 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 int reverse = 0; // 0:通常, 1:反転
 int inertia_flag = 0;
 uint32_t inertia_start_time = 0;
-int injection_state = 0; //射出チャージ時:1 非チャージ時:0
+int charge1_state = 0; //射出チャージ時:1 非チャージ時:0
+int charge2_state = 0; //射出チャージ時:1 非チャージ時:0
 int is_start_injection_release = 0;
 int is_start_injection_set = 0;
-int L_loading_valve;
-TIM_HandleTypeDef *L_Lock_Servo_HT;
-uint32_t L_Lock_Servo_CN;
-TIM_HandleTypeDef *R_Lock_Servo_HT;
-uint32_t R_Lock_Servo_CN;
+int charge1_valve;
+TIM_HandleTypeDef *charge1_Servo_HT;
+uint32_t charge1_Servo_CN;
+TIM_HandleTypeDef *charge2_Servo_HT;
+uint32_t charge2_Servo_CN;
 
 //割り込み
 static uint32_t Rx1_unit_code,Rx1_unit_id;
@@ -188,8 +189,8 @@ TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3;
 // TIM_HandleTypeDef *GPIO_C4_TIM_HT = &htim2; //未使用
 
 //入力ピン　定義
-int L_loading_valve = 1; //RUの射出Lリレー番号
-int R_loading_valve = 2; //RUの射出Rリレー番号
+int charge1_valve = 1; //RUの射出Lリレー番号
+int charge2_valve = 2; //RUの射出Rリレー番号
 int catch_relay_port = 3; //RUのキャッチリレー番号
 int LED_relay_port = 4; //RUのLEDリレー番号
 
@@ -238,9 +239,9 @@ int main(void)
   //CAN Setting
   ecan_init(1, 1); //MainBoard
   ecan_setAllPassFilter(&hcan1);
-  ecan_setAllPassFilter(&hcan2);
+  //ecan_setAllPassFilter(&hcan2);
   ecan_start(&hcan1);
-  ecan_start(&hcan2);
+  //ecan_start(&hcan2);
 
   //MCU
   MCU_move_Init(&hcan1,1,100); 
@@ -260,9 +261,9 @@ int main(void)
   HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 
   //射出
-  injection_Init(L_loading_valve, GPIO_D1_TIM_HT, GPIO_D1_TIM_CN, R_loading_valve, GPIO_D3_TIM_HT, GPIO_D3_TIM_CN);
-  LD_220MG_SetAngle(L_Lock_Servo_HT, L_Lock_Servo_CN, 90); //ロック外し 初期位置
-  LD_220MG_SetAngle(R_Lock_Servo_HT, R_Lock_Servo_CN, 90); //ロック外し 初期位置
+  injection_Init(charge1_valve, GPIO_D1_TIM_HT, GPIO_D1_TIM_CN, charge2_valve, GPIO_D3_TIM_HT, GPIO_D3_TIM_CN);
+  LD_220MG_SetAngle(charge1_Servo_HT, charge1_Servo_CN, 90); //ロック外し 初期位置
+  LD_220MG_SetAngle(charge2_Servo_HT, charge2_Servo_CN, 90); //ロック外し 初期位置
    
   unit_check(3000);//接続中のユニットを探す
   
@@ -294,29 +295,27 @@ int main(void)
     allBtnAxiState(); //ボタンの状態を更新
     handleMovement(); //移動（左右スティック）
     
-    //--アーム（十字）--
-    // if(getBtnState(BTN_UP)){ //射出 ロック
-    //   if(getBtnState(BTN_L2)){
-    //     LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 10); //ロック
-        
-    //     HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
-        
-    //   }else if(getBtnState(BTN_R2)){
-    //     LD_220MG_SetAngle(&htim2, TIM_CHANNEL_1, 90); //ロック外し
+    //--アーム（記号）--
 
-    //   }
-
-    // }
-    
-    int injection_set_BTN = getBtnState(BTN_UP);  //射出装填
+    int injection_set_BTN = getBtnState(BTN_X);  //射出装填
     if(injection_set_BTN) is_start_injection_set = 1;
-    if(is_start_injection_set) injection_set(&is_start_injection_set);
+    if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1);
 
-    int injection_release_BTN = getBtnState(BTN_DOWN);  //射出!!!
-    if(injection_release_BTN) is_start_injection_release = 1;
-    if(is_start_injection_release) injection_release(&is_start_injection_release);
+    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置
+    if(catch_aim_BTN) MCU_arm_control(&hcan1, 2, arm_aim);
 
-    int reverse_BTN = getBtnState(BTN_LEFT);  //動作反転
+    int catch_BTN = getBtnState(BTN_A); //アームキャッチ位置
+    if(catch_BTN) MCU_arm_control(&hcan1, 2, arm_catch);
+    
+    int catch_drag = getBtnState(BTN_B); //アーム引きずり位置
+    if(catch_drag) MCU_arm_control(&hcan1, 2, arm_drag);
+
+
+    //--（方向）--
+    int injection2_release = getBtnState(BTN_UP); //左射出
+    if(injection2_release) injection_release(&is_start_injection_release, 0, 1);
+
+    int reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
     if (reverse_BTN != Last_reverse_state){
       if (reverse_BTN) {
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
@@ -336,28 +335,26 @@ int main(void)
     }
 
 
-    //--アーム（記号）-- 
-    if (getBtnState(BTN_A)){//アーム　狙う　(◯)
-      MCU_arm_control(&hcan1, 2, arm_aim);
-    }else if (getBtnState(BTN_B)){//アーム　キャッチ　(☓)
-      MCU_arm_control(&hcan1, 2, arm_catch);
-    }else if (getBtnState(BTN_X)) {//アーム　射出　(△)
-      MCU_arm_control(&hcan1, 2, arm_injection); 
-    }else if (getBtnState(BTN_Y)){//アーム　引きずる（□）
-      MCU_arm_control(&hcan1, 2, arm_drag);
-    }else{
-      MCU_arm_control(&hcan1, 2, arm_null);
-    }
-    
 
     //リレー制御　（トリガー）
-    // if(getBtnState(BTN_L2)){//アーム開
-    //   RU_control(&hcan1, 1, catch_relay_port, 0);
-    // }else if(getBtnState(BTN_R2)){//アーム閉
-    //   RU_control(&hcan1, 1, catch_relay_port, 1);//アーム閉
-    // }
+    if(getBtnState(BTN_L2)){//アーム開
+      RU_control(&hcan1, 1, catch_relay_port, 0);//アーム開
+    }else if(getBtnState(BTN_R2)){//アーム閉
+      RU_control(&hcan1, 1, catch_relay_port, 1);//アーム閉
+    }
+
+    int injection1_release = getBtnState(BTN_L1); //左射出
+    if(injection1_release) injection_release(&is_start_injection_release, 1, 0);
+
+    //-----
 
 
+
+    // int injection_release_BTN = getBtnState(BTN_DOWN);  //射出!!!
+    // if(injection_release_BTN) is_start_injection_release = 1;
+    // if(is_start_injection_release) injection_release(&is_start_injection_release);
+
+    
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -943,8 +940,7 @@ void handleMovement(void){//移動　スティック操作
 
   } 
 
-  if(getBtnState(BTN_L2)) spead = 30;
-  if(getBtnState(BTN_R2)) spead = 60;
+  if(getBtnState(BTN_R1)) spead = 30;
   //printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
   MCU_move(DIR, spead, reverse); //MCUに移動命令
 }
@@ -969,70 +965,75 @@ void inertia_injection(int relay_NO){//慣性射出
   }
 }
 
-void injection_Init(int __L_loading_valve, TIM_HandleTypeDef *__L_Lock_Servo_HT, uint32_t __L_Lock_Servo_CN, int __R_loading_valve, TIM_HandleTypeDef *__R_Lock_Servo_HT, uint32_t __R_Lock_Servo_CN){
-  L_loading_valve = __L_loading_valve;
-  L_Lock_Servo_HT = __L_Lock_Servo_HT;
-  L_Lock_Servo_CN = __L_Lock_Servo_CN;
-  R_loading_valve = __R_loading_valve;
-  R_Lock_Servo_HT = __R_Lock_Servo_HT;
-  R_Lock_Servo_CN = __R_Lock_Servo_CN;
+void injection_Init(int __loading1_valve, TIM_HandleTypeDef *__Lock1_Servo_HT, uint32_t __Lock1_Servo_CN, int __loading2_valve, TIM_HandleTypeDef *__Lock2_Servo_HT, uint32_t __Lock2_Servo_CN){//1:正面右　2:正面左
+  charge1_valve = __loading1_valve;
+  charge1_Servo_HT = __Lock1_Servo_HT;
+  charge1_Servo_CN = __Lock1_Servo_CN;
+  charge2_valve = __loading2_valve;
+  charge2_Servo_HT = __Lock2_Servo_HT;
+  charge2_Servo_CN = __Lock2_Servo_CN;
 }
 
 uint32_t injection_start_time = 0;
-void injection_set(int *is_start){//射出セット　自動
-  if(injection_state == 0){//チャージされていないとき
+void injection_set(int *is_start_flag, bool charge1_doProsess, bool charge2_doProsess){//射出セット　自動
+  if(charge1_state == 0 || charge2_state == 0){//どちらかがチャージされていないとき
     if(injection_start_time <= 0){//1
       printf("injection_set");
       injection_start_time  = HAL_GetTick();
-      RU_control(&hcan1, 1, L_loading_valve, 1); //射出ソレノイド　伸ばす
-      RU_control(&hcan1, 1, R_loading_valve, 1); //射出ソレノイド　伸ばす
+      if(charge1_state == 1) charge1_doProsess= 0; //すでにチャージされてたら...
+      if(charge2_state == 1) charge2_doProsess= 0;
+      RU_control(&hcan1, 1, charge1_valve, charge1_doProsess); //射出ソレノイド　伸ばす
+      RU_control(&hcan1, 1, charge2_valve, charge2_doProsess); 
       MCU_arm_control(&hcan1, 2, arm_injection); 
     }
  
     //--射出機構　チャージ--
     uint32_t check_time = HAL_GetTick() - injection_start_time;
     if(check_time >=2500){//3
-      RU_control(&hcan1, 1, L_loading_valve, 0); //射出ソレノイド　戻す
-      RU_control(&hcan1, 1, R_loading_valve, 0); //射出ソレノイド　戻す
+      RU_control(&hcan1, 1, charge1_valve, 0); //射出ソレノイド　戻す
+      RU_control(&hcan1, 1, charge2_valve, 0);
       injection_start_time = 0;
-      injection_state = 1; //チャージ完了
-      *is_start = 0; //装填プログラム実装でき次第削除
+      charge1_state = charge1_doProsess; //チャージ状況保存
+      charge2_state = charge2_doProsess; 
+      *is_start_flag = 0; //装填プログラム実装でき次第削除
       return; //装填プログラム実装でき次第削除
     }else if(check_time >=1500){//2
-      LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 10); //射出ロック
-      LD_220MG_SetAngle(&htim2,  TIM_CHANNEL_1, 170); //射出ロック
+      if(charge1_doProsess) LD_220MG_SetAngle(charge1_Servo_HT,  charge1_Servo_CN, 10); //射出ロック
+      if(charge2_doProsess) LD_220MG_SetAngle(charge2_Servo_HT,  charge2_Servo_CN, 170); //射出ロック
       
     }
+  }else{
+    return;
   }
 
   // if(getAxiState(BTN_LEFT) == 1 || getAxiState(BTN_RIGHT) == 1 || getAxiState(BTN_RIGHT) == 1){
-  //   *is_start = 0; //装填プログラム実装でき次第削除
+  //   *is_start_flag = 0; //装填プログラム実装でき次第削除
   //   return; //装填プログラム実装でき次第削除
   // }
   
   //--装填--
   // if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == 1 && injection_state == 1){
   //   RU_control(&hcan1, 1, catch_relay_port ,1);
-  //   *is_start = 0;
+  //   *is_start_flag = 0;
   // }
 
 }
 
-void injection_release(int *is_start){//射出!!　
-  *is_start = 0;
-  if(injection_state != 1){
+
+void injection_release(int *is_start_flag, bool release1_doProsess, bool release2_doProsess){//射出!!　
+  *is_start_flag = 0;
+  if(charge1_state != 1 && charge2_state != 1){
     return;
   }else{
-    printf("injection_release %d\n\r",injection_state);
-    LD_220MG_SetAngle(L_Lock_Servo_HT,  L_Lock_Servo_CN, 90);  //ロック解除
-    LD_220MG_SetAngle(R_Lock_Servo_HT,  R_Lock_Servo_CN, 90);  //ロック解除
-    injection_state = 0; //非装填
+    if(release1_doProsess) LD_220MG_SetAngle(charge1_Servo_HT,  charge1_Servo_CN, 90);  //ロック解除
+    if(release2_doProsess) LD_220MG_SetAngle(charge2_Servo_HT,  charge2_Servo_CN, 90);  //ロック解除
+    charge1_state = !release1_doProsess; //チャージ状況保存
+    charge2_state = !release2_doProsess; //チャージ状況保存
     return;
   }  
 }
 
 /* USER CODE END 4 */
-
 /**
   * @brief  This function is executed in case of error occurrence.
   * @retval None
@@ -1042,6 +1043,7 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   MCU_move(Stop, 0, 0);
+  PCU_voltage_cutoff();
   __disable_irq();
   while (1)
   {
