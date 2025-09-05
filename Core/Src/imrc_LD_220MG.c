@@ -1,6 +1,7 @@
 #include "imrc_LD_220MG.h"
 #include "stm32f4xx_hal.h"
 #include <string.h>
+#include <stdio.h>
 
 // IMRC LD-220MG servo motor
 // Version 1.0

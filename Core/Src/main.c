@@ -346,15 +346,7 @@ int main(void)
     int injection1_release = getBtnState(BTN_L1); //左射出
     if(injection1_release) injection_release(&is_start_injection_release, 1, 0);
 
-    //-----
-
-
-
-    // int injection_release_BTN = getBtnState(BTN_DOWN);  //射出!!!
-    // if(injection_release_BTN) is_start_injection_release = 1;
-    // if(is_start_injection_release) injection_release(&is_start_injection_release);
-
-    
+   
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -1019,7 +1011,6 @@ void injection_set(int *is_start_flag, bool charge1_doProsess, bool charge2_doPr
 
 }
 
-
 void injection_release(int *is_start_flag, bool release1_doProsess, bool release2_doProsess){//射出!!　
   *is_start_flag = 0;
   if(charge1_state != 1 && charge2_state != 1){
@@ -1032,6 +1023,45 @@ void injection_release(int *is_start_flag, bool release1_doProsess, bool release
     return;
   }  
 }
+
+//ライブラリに入れたいなーーー
+#define MAX_BUTTONS 16 
+static uint32_t lastPressTime[MAX_BUTTONS] = {0};
+bool getBtnMultiState(const uint8_t *buttons, uint8_t numButtons, uint32_t threshold){
+  uint32_t now = HAL_GetTick();
+  uint32_t minTime = 0xFFFFFFFF;
+  uint32_t maxTime = 0;
+  uint8_t pressedCount = 0;
+
+  // すべての対象ボタンについて処理
+  for (uint8_t i = 0; i < numButtons; i++) {
+    uint8_t btn = buttons[i];
+
+    if (getBtnState(btn)) {
+      // ボタンが押されていたら時刻を更新
+      if (lastPressTime[btn] == 0) {
+        lastPressTime[btn] = now;
+      }
+
+      // 最小と最大の押下時刻を記録
+      if (lastPressTime[btn] < minTime) minTime = lastPressTime[btn];
+      if (lastPressTime[btn] > maxTime) maxTime = lastPressTime[btn];
+
+      pressedCount++;
+    } else {
+      // 離されていたら時刻リセット
+      lastPressTime[btn] = 0;
+    }
+  }
+
+  // 全部押されていて、かつ押下時刻の差が threshold 以内なら同時押し
+  if (pressedCount == numButtons && (maxTime - minTime) <= threshold) {
+    return 1;
+  }
+
+  return 0;
+}
+
 
 /* USER CODE END 4 */
 /**
