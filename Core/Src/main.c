@@ -70,7 +70,6 @@ static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
-
 //プロトタイプ宣言
 void connection_monitoring(float); //ESPとの接続確認関数
 void unit_check(int wait_time);
@@ -81,6 +80,7 @@ void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef 
 void injection_set(int *, bool, bool);
 void injection_release(int*, bool, bool);
 bool getBtnMultiState(const uint8_t *, uint8_t , uint32_t);
+bool injection_charge(int *, bool , bool );
 
 /* USER CODE END PFP */
 
@@ -101,6 +101,7 @@ int is_start_injection_release = 0;
 int is_start_injection_set = 0;
 int is_start_catch_drag = 0;
 int catch_state = 0;
+int null;
 TIM_HandleTypeDef *charge1_Servo_HT;
 uint32_t charge1_Servo_CN;
 TIM_HandleTypeDef *charge2_Servo_HT;
@@ -117,7 +118,7 @@ static uint8_t data_MCU1[8];
 static uint8_t data_MCU2[8];
 static uint8_t data_RU[8];
 uint32_t data_type_ESP[2];
-int32_t data_type_PCU[2];
+uint32_t data_type_PCU[2];
 uint32_t data_type_MCU1[2];//足回り [index, entry]
 uint32_t data_type_MCU2[2];//アーム [index, entry]
 uint32_t data_type_RU[2];
@@ -290,11 +291,13 @@ int main(void)
 
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
-    PCU_survival_signal(1000);  //PCUに生存信号送信
+    PCU_survival_signal(1000);  //PCUに生存信号送信 
+
+    if(HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)) injection_charge(&null, 1, 0);
 
     //---コントローラーのボタン処理---
     allBtnAxiState(); //ボタンの状態を更新
-    handleMovement(); //移動（左右スティック）
+    handleMovement(); //移動（左右スティック） R1で速度を遅くする
     
     //--アーム（記号）--
 
@@ -975,8 +978,9 @@ void injection_Init(int __loading1_valve, TIM_HandleTypeDef *__Lock1_Servo_HT, u
   charge2_Servo_CN = __Lock2_Servo_CN;
 }
 
-uint32_t injection_start_time = 0;
-void injection_set(int *is_start_flag, bool charge1_doProsess, bool charge2_doProsess){//射出セット　自動
+bool injection_charge(int *is_start_flag, bool charge1_doProsess, bool charge2_doProsess){//射出チャージ　自動
+  static uint32_t injection_start_time = 0;
+
   if(charge1_state == 0 || charge2_state == 0){//どちらかがチャージされていないとき
     if(injection_start_time <= 0){//1
       printf("injection_set");
@@ -997,14 +1001,14 @@ void injection_set(int *is_start_flag, bool charge1_doProsess, bool charge2_doPr
       charge1_state = charge1_doProsess; //チャージ状況保存
       charge2_state = charge2_doProsess; 
       *is_start_flag = 0; //装填プログラム実装でき次第削除
-      return; //装填プログラム実装でき次第削除
+      return 1; //装填プログラム実装でき次第削除
     }else if(check_time >=1500){//2
       if(charge1_doProsess) LD_220MG_SetAngle(charge1_Servo_HT,  charge1_Servo_CN, 10); //射出ロック
       if(charge2_doProsess) LD_220MG_SetAngle(charge2_Servo_HT,  charge2_Servo_CN, 170); //射出ロック
       
     }
   }else{
-    return;
+    return 0;
   }
 
   // if(getAxiState(BTN_LEFT) == 1 || getAxiState(BTN_RIGHT) == 1 || getAxiState(BTN_RIGHT) == 1){
@@ -1012,13 +1016,27 @@ void injection_set(int *is_start_flag, bool charge1_doProsess, bool charge2_doPr
   //   return; //装填プログラム実装でき次第削除
   // }
   
-  //--装填--
-  // if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == 1 && injection_state == 1){
-  //   RU_control(&hcan1, 1, catch_relay_port ,1);
-  //   *is_start_flag = 0;
-  // }
 
 }
+
+void injection_set(int *is_start_flag, bool charge1_doProsess, bool charge2_doProsess){//射出にセット 自動(アーム上に移動⇒装填)
+  static int charge_done = 0;
+  static int arm_move_done = 0;
+
+  if(injection_charge(is_start_flag, charge1_doProsess, charge2_doProsess)) charge_done = 1;
+  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_injection ) arm_move_done = 1;
+
+  if(charge_done == 1 && arm_move_done == 1){
+    RU_control(&hcan1, 1, catch_relay_port, 0);
+    catch_state = 0; //キャッチ機構の状態更新
+    charge_done = 0;
+    arm_move_done = 0;
+    *is_start_flag = 0;
+    return;
+
+  }
+}
+
 
 void injection_release(int *is_start_flag, bool release1_doProsess, bool release2_doProsess){//射出!!　
   *is_start_flag = 0;
@@ -1029,14 +1047,14 @@ void injection_release(int *is_start_flag, bool release1_doProsess, bool release
     if(release2_doProsess) LD_220MG_SetAngle(charge2_Servo_HT,  charge2_Servo_CN, 90);  //ロック解除
     if(release1_doProsess) charge1_state = !release1_doProsess; //チャージ状況保存
     if(release2_doProsess) charge2_state = !release2_doProsess; //チャージ状況保存
-    printf("change state  release1 : %d  release1 : %d \n\r", charge1_state, charge2_state);
+    printf("change state  release1 : %d  release2 : %d \n\r", charge1_state, charge2_state);
     return;
   }  
 }
 
-uint32_t arm_catch_timecount = 0;
 void arm_drag_set(int *is_start_flag, int catch_timeout){
-  int move_arm_isdone;
+  static uint32_t arm_catch_timecount = 0;
+  static int move_arm_isdone = 0;
 
   if(arm_catch_timecount == 0) MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_drag) move_arm_isdone = 1; //アームが下まで移動完了したら
@@ -1061,9 +1079,9 @@ void arm_drag_set(int *is_start_flag, int catch_timeout){
 
 }
 
-uint32_t arm_drag_set_timecount = 0;
 void injection_reload_from_drag(int *is_start_flag, int catch_timeout){ //引きずり機構から自動装てん
-  int move_arm_isdone;
+  static uint32_t arm_drag_set_timecount = 0;
+  static int move_arm_isdone = 0;
 
   if(arm_drag_set_timecount == 0) MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_drag) move_arm_isdone = 1; //アームが下まで移動完了したら
@@ -1082,6 +1100,7 @@ void injection_reload_from_drag(int *is_start_flag, int catch_timeout){ //引き
 
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_injection && catch_state == 1 && move_arm_isdone == 1){
     RU_control(&hcan1, 1, catch_relay_port, 0);
+    catch_state = 0;
     move_arm_isdone = 0;
     *is_start_flag = 0;
     return;
