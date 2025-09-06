@@ -80,6 +80,7 @@ void inertia_injection(int);
 void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef *, uint32_t );
 void injection_set(int *, bool, bool);
 void injection_release(int*, bool, bool);
+bool getBtnMultiState(const uint8_t *, uint8_t , uint32_t);
 
 /* USER CODE END PFP */
 
@@ -98,7 +99,8 @@ int charge1_state = 0; //射出チャージ時:1 非チャージ時:0
 int charge2_state = 0; //射出チャージ時:1 非チャージ時:0
 int is_start_injection_release = 0;
 int is_start_injection_set = 0;
-int charge1_valve;
+int is_start_catch_drag = 0;
+int catch_state = 0;
 TIM_HandleTypeDef *charge1_Servo_HT;
 uint32_t charge1_Servo_CN;
 TIM_HandleTypeDef *charge2_Servo_HT;
@@ -286,7 +288,6 @@ int main(void)
   int last_LED_state = 0;
   int LED_state;
 
-
   while(1){
     connection_monitoring(1700); //各ユニットとの接続確認    
     PCU_survival_signal(1000);  //PCUに生存信号送信
@@ -297,24 +298,21 @@ int main(void)
     
     //--アーム（記号）--
 
-    int injection_set_BTN = getBtnState(BTN_X);  //射出装填
+    int injection_set_BTN = getBtnState(BTN_X);  //射出装填 △
     if(injection_set_BTN) is_start_injection_set = 1;
     if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1);
 
-    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置
+    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
     if(catch_aim_BTN) MCU_arm_control(&hcan1, 2, arm_aim);
 
-    int catch_BTN = getBtnState(BTN_A); //アームキャッチ位置
+    int catch_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
     if(catch_BTN) MCU_arm_control(&hcan1, 2, arm_catch);
     
-    int catch_drag = getBtnState(BTN_B); //アーム引きずり位置
-    if(catch_drag) MCU_arm_control(&hcan1, 2, arm_drag);
-
+    int drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
+    if(drag_BTN) is_start_catch_drag = 1;
+    if(is_start_catch_drag) arm_drag_set(&is_start_catch_drag, 1000);
 
     //--（方向）--
-    int injection2_release = getBtnState(BTN_UP); //左射出
-    if(injection2_release) injection_release(&is_start_injection_release, 0, 1);
-
     int reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
     if (reverse_BTN != Last_reverse_state){
       if (reverse_BTN) {
@@ -324,7 +322,7 @@ int main(void)
       Last_reverse_state = reverse_BTN;
     }
 
-    int LED_BTN = getBtnState(BTN_RIGHT); //昆虫完成
+    int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
     if(LED_BTN != last_LED_state){
       if (LED_BTN) {
         LED_state = !LED_state;
@@ -334,19 +332,31 @@ int main(void)
       last_LED_state = LED_BTN;
     }
 
-
-
-    //リレー制御　（トリガー）
-    if(getBtnState(BTN_L2)){//アーム開
-      RU_control(&hcan1, 1, catch_relay_port, 0);//アーム開
-    }else if(getBtnState(BTN_R2)){//アーム閉
-      RU_control(&hcan1, 1, catch_relay_port, 1);//アーム閉
+    //射出
+    int injection2_release_BTN = getBtnState(BTN_RIGHT); //右射出
+    int injection1_release_BTN = getBtnState(BTN_L1); //左射出
+    uint8_t ALL_injection_buttons[]={BTN_RIGHT , BTN_L1};
+    if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタンが押されてるとき、両射出
+      injection_release(&is_start_injection_release, 1, 1);
+    }else if(injection2_release_BTN){
+      injection_release(&is_start_injection_release, 0, 1);
+    }else if(injection1_release_BTN){
+      injection_release(&is_start_injection_release, 1, 0);
     }
 
-    int injection1_release = getBtnState(BTN_L1); //左射出
-    if(injection1_release) injection_release(&is_start_injection_release, 1, 0);
+    //リレー制御　（トリガー）
+    int catch_open_BTN = getBtnState(BTN_L2);
+    int catch_close_BTN = getBtnState(BTN_R2);
+    if(catch_open_BTN){//アーム開
+      RU_control(&hcan1, 1, catch_relay_port, 0);
+      catch_state = 0;
+    }else if(catch_close_BTN){//アーム閉
+      RU_control(&hcan1, 1, catch_relay_port, 1);
+      catch_state = 1;
+    }
 
-   
+    //R1は速度を30に設定
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -793,7 +803,6 @@ void  unit_check(int wait_time){//接続中のユニットを探す
             break;
         }
         device_list[i] = 0;
-
       }else{//つながってたら
         device_list[i] = 1;
       }
@@ -880,7 +889,7 @@ void ALL_LED_OFF(void){//全LED消灯
   HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_RESET);
 }
 
-void handleMovement(void){//移動　スティック操作
+void handleMovement(void){//移動　スティッアーム
   int DIR = 0; //移動方向
   int spead = 0; //速度
 
@@ -1018,11 +1027,67 @@ void injection_release(int *is_start_flag, bool release1_doProsess, bool release
   }else{
     if(release1_doProsess) LD_220MG_SetAngle(charge1_Servo_HT,  charge1_Servo_CN, 90);  //ロック解除
     if(release2_doProsess) LD_220MG_SetAngle(charge2_Servo_HT,  charge2_Servo_CN, 90);  //ロック解除
-    charge1_state = !release1_doProsess; //チャージ状況保存
-    charge2_state = !release2_doProsess; //チャージ状況保存
+    if(release1_doProsess) charge1_state = !release1_doProsess; //チャージ状況保存
+    if(release2_doProsess) charge2_state = !release2_doProsess; //チャージ状況保存
+    printf("change state  release1 : %d  release1 : %d \n\r", charge1_state, charge2_state);
     return;
   }  
 }
+
+uint32_t arm_catch_timecount = 0;
+void arm_drag_set(int *is_start_flag, int catch_timeout){
+  int move_arm_isdone;
+
+  if(arm_catch_timecount == 0) MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
+  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_drag) move_arm_isdone = 1; //アームが下まで移動完了したら
+
+  if(move_arm_isdone == 1){
+    RU_control(&hcan1, 1, catch_relay_port, 0);
+    if(arm_catch_timecount == 0) arm_catch_timecount = HAL_GetTick();
+    if((HAL_GetTick() - arm_catch_timecount) <= catch_timeout){
+      catch_state = 0; //クリーナ放せましたよー
+    }
+  }
+
+  if(catch_state == 0 && move_arm_isdone == 1){
+    MCU_arm_control(&hcan1, 2, arm_aim);//アーム狙う位置まで移動
+  }
+
+  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_aim && catch_state == 0 && move_arm_isdone == 1){//狙う位置まで移動完了
+    move_arm_isdone = 0;
+    *is_start_flag = 0;
+    return;
+  }
+
+}
+
+uint32_t arm_drag_set_timecount = 0;
+void injection_reload_from_drag(int *is_start_flag, int catch_timeout){ //引きずり機構から自動装てん
+  int move_arm_isdone;
+
+  if(arm_drag_set_timecount == 0) MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
+  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_drag) move_arm_isdone = 1; //アームが下まで移動完了したら
+
+  if(move_arm_isdone == 1){
+    RU_control(&hcan1, 1, catch_relay_port, 1);
+    if(arm_drag_set_timecount == 0) arm_drag_set_timecount = HAL_GetTick();
+    if((HAL_GetTick() - arm_drag_set_timecount) <= catch_timeout){
+      catch_state = 1; //クリーナつかみました
+    }
+  }
+
+  if(catch_state == 1 && move_arm_isdone == 1){
+    MCU_arm_control(&hcan1, 2, arm_injection);
+  }
+
+  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_injection && catch_state == 1 && move_arm_isdone == 1){
+    RU_control(&hcan1, 1, catch_relay_port, 0);
+    move_arm_isdone = 0;
+    *is_start_flag = 0;
+    return;
+  }
+}
+
 
 //ライブラリに入れたいなーーー
 #define MAX_BUTTONS 16 
