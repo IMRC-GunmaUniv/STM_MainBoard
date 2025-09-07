@@ -310,12 +310,22 @@ int main(void)
     
     //--アーム（記号）--
 
+    int send_calibration_BTN[] = {BTN_R1 , BTN_Y}; 
+    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
+    
+    if(getBtnMultiState(send_calibration_BTN, 2, 70)){
+      uint8_t calibration_body[1] = {1};
+      ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
+    }else if(catch_aim_BTN){
+      MCU_arm_control(&hcan1, 2, arm_aim);
+    } 
+
     int injection_set_BTN = getBtnState(BTN_X);  //射出装填 △
     if(injection_set_BTN) is_start_injection_set = 1;
-    if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1);
+    //if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1);
+    if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1);
 
-    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
-    if(catch_aim_BTN) MCU_arm_control(&hcan1, 2, arm_aim);
+    
 
     int catch_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
     if(catch_BTN) MCU_arm_control(&hcan1, 2, arm_catch);
@@ -349,9 +359,9 @@ int main(void)
     if(is_start_reload_from_drag_BTN) injection_reload_from_drag(&is_start_reload_from_drag_BTN, 1000);
     
     //射出
-    int Black_injection_release_BTN = getBtnState(BTN_L1); //左射出
-    int White_injection_release_BTN = getBtnState(BTN_RIGHT); //右射出
-    uint8_t ALL_injection_buttons[]={BTN_RIGHT , BTN_L1};
+    int Black_injection_release_BTN = getBtnState(BTN_RIGHT); 
+    int White_injection_release_BTN = getBtnState(BTN_L1); 
+    int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1};
     if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタンが押されてるとき、両射出
       injection_release(&is_start_injection_release, 1, 1);
     }else if(White_injection_release_BTN){
