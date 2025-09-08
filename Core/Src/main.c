@@ -77,9 +77,9 @@ void ALL_LED_OFF(void);
 void handleMovement(void);
 void inertia_injection(int);
 void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef *, uint32_t );
-void injection_set(int *, bool, bool);
+void injection_set(int *, bool, bool, int);
 void injection_release(int *, bool, bool);
-bool getBtnMultiState(const uint8_t *, uint8_t , uint32_t);
+bool getBtnMultiState(const int *, uint8_t , uint32_t);
 bool injection_charge(int *, bool , bool );
 void arm_drag_set(int *, int);
 void arm_drag_set(int *, int);
@@ -300,52 +300,77 @@ int main(void)
     connection_monitoring(1700); //各ユニットとの接続確認    
     PCU_survival_signal(1000);  //PCUに生存信号送信 
 
-    int beetle_set_BTN = !HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin);
-    if(beetle_set_BTN) is_start_beetle_set = 1;
-    if(is_start_beetle_set) injection_charge(&is_start_beetle_set, 1, 0);
+    //ボタン指定
+    int beetle_set_BTN = !HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin); //カブトムシ装填
+    int send_calibration_BTN[] = {BTN_R1 , BTN_Y}; //キャリブレーション信号送信
+    int injection_set_BTN = getBtnState(BTN_X);  //射出装填 △
+    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
+    int arm_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
+    int arm_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
+    int reload_from_drag_BTN = getBtnState(BTN_UP); //アーム引きずり位置　×    
+    int reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
+    int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
+    int Black_injection_release_BTN = getBtnState(BTN_RIGHT); //黒い射出、射出
+    int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1}; //全射出
+    int White_injection_release_BTN = getBtnState(BTN_L1); //白い射出、射出
+    int catch_open_BTN = getBtnState(BTN_L2); //つかむ機構　開
+    int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
+    //R1は速度を30に設定（handleMovement内）
+
 
     //---コントローラーのボタン処理---
     allBtnAxiState(); //ボタンの状態を更新
     handleMovement(); //移動（左右スティック） R1で速度を遅くする
-    
-    //--アーム（記号）--
 
-    int send_calibration_BTN[] = {BTN_R1 , BTN_Y}; 
-    int catch_aim_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
-    
-    if(getBtnMultiState(send_calibration_BTN, 2, 70)){
+    if(getBtnMultiState(send_calibration_BTN, 2, 70)){ //キャリブレーション送信
       uint8_t calibration_body[1] = {1};
       ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
-    }else if(catch_aim_BTN){
+    }else if(catch_aim_BTN){  //箱狙う位置
       MCU_arm_control(&hcan1, 2, arm_aim);
     } 
 
-    int injection_set_BTN = getBtnState(BTN_X);  //射出装填 △
-    if(injection_set_BTN) is_start_injection_set = 1;
-    //if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1);
-    if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1);
-
+    if(injection_set_BTN) is_start_injection_set = 1;   //射出装填
+    //if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1, 500);
+    if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1); //(チャージのみ)
     
-
-    int catch_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
-    if(catch_BTN) MCU_arm_control(&hcan1, 2, arm_catch);
+    if(arm_catch_position_BTN) MCU_arm_control(&hcan1, 2, arm_catch); //つかむ位置まで移動
     
-    int drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
-    if(drag_BTN) is_start_catch_drag = 1;
-    if(is_start_catch_drag) arm_drag_set(&is_start_catch_drag, 1000);
+    if(arm_drag_BTN) is_start_catch_drag = 1; //引きずる機構に移動(自動)
+    if(is_start_catch_drag) arm_drag_set(&is_start_catch_drag, 3000);
 
-    //--（方向）--
-    int reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
-    if (reverse_BTN != Last_reverse_state){
+
+    //射出関連
+    if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填
+    if(is_start_reload_from_drag_BTN) injection_reload_from_drag(&is_start_reload_from_drag_BTN, 1000);
+    
+    if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出
+      injection_release(&is_start_injection_release, 1, 1);
+    }else if(White_injection_release_BTN){//白射出
+      injection_release(&is_start_injection_release, 0, 1);
+    }else if(Black_injection_release_BTN){//黒射出
+      injection_release(&is_start_injection_release, 1, 0);
+    }
+
+
+    //つかむ機構
+    if(catch_open_BTN){//つかむアーム開
+      RU_control(&hcan1, 1, catch_relay_port, 0);
+      catch_state = 0;
+    }else if(catch_close_BTN){//つかむアーム閉
+      RU_control(&hcan1, 1, catch_relay_port, 1);
+      catch_state = 1;
+    }
+
+    //その他
+    if (reverse_BTN != Last_reverse_state){ //動作反転
       if (reverse_BTN) {
         HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
         reverse = !reverse;
       }
       Last_reverse_state = reverse_BTN;
     }
-
-    int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
-    if(LED_BTN != last_LED_state){
+    
+    if(LED_BTN != last_LED_state){ //昆虫図鑑完成
       if (LED_BTN) {
         LED_state = !LED_state;
         printf("%d",LED_state);
@@ -354,34 +379,8 @@ int main(void)
       last_LED_state = LED_BTN;
     }
 
-    int reload_from_drag_BTN = getBtnState(BTN_UP); //アーム引きずり位置　×
-    if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1;
-    if(is_start_reload_from_drag_BTN) injection_reload_from_drag(&is_start_reload_from_drag_BTN, 1000);
-    
-    //射出
-    int Black_injection_release_BTN = getBtnState(BTN_RIGHT); 
-    int White_injection_release_BTN = getBtnState(BTN_L1); 
-    int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1};
-    if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタンが押されてるとき、両射出
-      injection_release(&is_start_injection_release, 1, 1);
-    }else if(White_injection_release_BTN){
-      injection_release(&is_start_injection_release, 0, 1);
-    }else if(Black_injection_release_BTN){
-      injection_release(&is_start_injection_release, 1, 0);
-    }
-
-    //リレー制御　（トリガー）
-    int catch_open_BTN = getBtnState(BTN_L2);
-    int catch_close_BTN = getBtnState(BTN_R2);
-    if(catch_open_BTN){//アーム開
-      RU_control(&hcan1, 1, catch_relay_port, 0);
-      catch_state = 0;
-    }else if(catch_close_BTN){//アーム閉
-      RU_control(&hcan1, 1, catch_relay_port, 1);
-      catch_state = 1;
-    }
-
-    //R1は速度を30に設定
+    if(beetle_set_BTN) is_start_beetle_set = 1; //カブトムシ装填
+    if(is_start_beetle_set) injection_charge(&is_start_beetle_set, 1, 0);
 
     /* USER CODE END WHILE */
 
@@ -791,6 +790,7 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 int device_list[5] = {0, 0, 0, 0, 0}; // 接続中のデバイス配列｛WCD,　PCU,　MCU1, MCU2,　RU｝　0:未接続　1:接続中
+char *device_name[5] = {"WCD", "PCU", "MCU1", "MCU2", "RU"};
 void  unit_check(int wait_time){//接続中のユニットを探す
   uint32_t start_time = HAL_GetTick();
   while(HAL_GetTick() - start_time < (wait_time+500)){
@@ -806,34 +806,39 @@ void  unit_check(int wait_time){//接続中のユニットを探す
         device_list[i] = 1;
         continue;
       }else if(CHECK_TIME > wait_time ){ //つながっていないユニットを探す
+        device_list[i] = 0;
         switch (i){
           case 0: //WCD
-            printf("WCD is disconnected\n\r");
+            //printf("WCD is disconnected\n\r");
             HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_SET);
             break;
           case 1: //PCU
-            printf("PCU is disconnected\n\r");
+            //printf("PCU is disconnected\n\r");
             HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_SET);
             break;
           case 2: //MCU1
-            printf("MCU1 is disconnected\n\r");
+            //printf("MCU1 is disconnected\n\r");
             HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_SET);
             break;
           case 3: //MCU2
-            printf("MCU2 is disconnected\n\r");
+            //printf("MCU2 is disconnected\n\r");
             HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_SET);
             break;
           case 4: //RU
-            printf("RU is disconnected\n\r");
+            //printf("RU is disconnected\n\r");
             HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_SET);
             break;
         }
-        device_list[i] = 0;
       }else{//つながってたら
         device_list[i] = 1;
       }
     }
 
+  }
+  for(int i=0;i<5;i++){
+    if(i==0) printf("---Device state---\n\r");
+    if(device_list[i] == 0) printf("%s\tcan't find\n\r",device_name[i]);
+    if(i==4) printf("------------------\n\r");
   }
   
 }
@@ -1012,7 +1017,6 @@ bool injection_charge(int *is_start_flag, bool Black_charge_doProsess, bool Whit
       if(White_charge_state == 1) White_charge_doProsess= 0;
       RU_control(&hcan1, 1, Black_charge_valve, Black_charge_doProsess); //射出ソレノイド　伸ばす
       RU_control(&hcan1, 1, White_charge_valve, White_charge_doProsess); 
-      MCU_arm_control(&hcan1, 2, arm_injection); 
     }
  
     //--射出機構　チャージ--
@@ -1042,16 +1046,28 @@ bool injection_charge(int *is_start_flag, bool Black_charge_doProsess, bool Whit
 
 }
 
-void injection_set(int *is_start_flag, bool Black_charge_doProsess, bool White_charge_doProsess){//射出にセット 自動(アーム上に移動⇒装填)
+void injection_set(int *is_start_flag, bool Black_charge_doProsess, bool White_charge_doProsess, int release_timeout){//射出にセット 自動(アーム上に移動⇒装填) //naosi time out
   static int charge_done = 0;
   static int arm_move_done = 0;
+  static int injection_set_start_time = 0;
 
+  
+  if(injection_set_start_time == 0) {
+    MCU_arm_control(&hcan1, 2, arm_injection); 
+    injection_set_start_time = HAL_GetTick();
+  }
   if(injection_charge(&null, Black_charge_doProsess, White_charge_doProsess)) charge_done = 1;
-  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_injection ) arm_move_done = 1;
+  if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == arm_injection ){
+    arm_move_done = 1;
+    printf("recieve injection move done \n\r");
+  }else{
+    printf("wait move to injection posishon\n\r");
+  }
 
   
   if(Black_charge_state ==1 && White_charge_state == 1 && arm_move_done == 1){ 
-    if(RU_control(&hcan1, 1, catch_relay_port, 0)){
+    if((HAL_GetTick() - injection_set_start_time <= release_timeout) && RU_control(&hcan1, 1, catch_relay_port, 0)){ //naosu
+      injection_set_start_time = 0;
       catch_state = 0; //キャッチ機構の状態更新
       charge_done = 0;
       arm_move_done = 0;
@@ -1083,15 +1099,26 @@ void arm_drag_set(int *is_start_flag, int catch_timeout){
   static uint32_t arm_catch_timecount = 0;
   static int move_arm_isdone = 0;
 
-  if(arm_catch_timecount == 0) MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
+  if(arm_catch_timecount == 0){
+    MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
+    printf("wait for move to HIKIZURI\n\r");
+  } 
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_drag) move_arm_isdone = 1; //アームが下まで移動完了したら
 
   if(move_arm_isdone == 1){
-    RU_control(&hcan1, 1, catch_relay_port, 0);
+    printf("done move to HIKIZURI\n\r");
     if(arm_catch_timecount == 0) arm_catch_timecount = HAL_GetTick();
-    if((HAL_GetTick() - arm_catch_timecount) >= catch_timeout){
+    if(((HAL_GetTick() - arm_catch_timecount) >= catch_timeout) && catch_state == 1){
+      RU_control(&hcan1, 1, catch_relay_port, 0);
       catch_state = 0; //クリーナ放せましたよー
+    }else if(((HAL_GetTick() - arm_catch_timecount) >= catch_timeout) && catch_state == 0){
+      arm_catch_timecount = 0;
+      move_arm_isdone = 0;
+      *is_start_flag = 0;
+      data_MCU2[1] = 0;
+      return;
     }
+
   }
 
   if(catch_state == 0 && move_arm_isdone == 1){
@@ -1099,6 +1126,7 @@ void arm_drag_set(int *is_start_flag, int catch_timeout){
   }
 
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_aim && catch_state == 0 && move_arm_isdone == 1){//狙う位置まで移動完了
+    arm_catch_timecount = 0;
     move_arm_isdone = 0;
     *is_start_flag = 0;
     data_MCU2[1] = 0;
@@ -1111,11 +1139,15 @@ void injection_reload_from_drag(int *is_start_flag, int catch_timeout){ //引き
   static uint32_t arm_drag_set_timecount = 0;
   static int move_arm_isdone = 0;
 
-  if(arm_drag_set_timecount == 0) MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
+  if(arm_drag_set_timecount == 0){
+    MCU_arm_control(&hcan1, 2, arm_drag); //始めてだったら
+    arm_drag_set_timecount = HAL_GetTick();
+  } 
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_drag) move_arm_isdone = 1; //アームが下まで移動完了したら
 
   if(move_arm_isdone == 1){
     RU_control(&hcan1, 1, catch_relay_port, 1);
+    injection_charge(&null, 1, 1);
     if(arm_drag_set_timecount == 0) arm_drag_set_timecount = HAL_GetTick();
     if((HAL_GetTick() - arm_drag_set_timecount) <= catch_timeout){
       catch_state = 1; //クリーナつかみました
@@ -1128,6 +1160,7 @@ void injection_reload_from_drag(int *is_start_flag, int catch_timeout){ //引き
 
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] ==1 && data_MCU2[1] == arm_injection && catch_state == 1 && move_arm_isdone == 1){
     RU_control(&hcan1, 1, catch_relay_port, 0);
+    arm_drag_set_timecount = 0;
     catch_state = 0;
     move_arm_isdone = 0;
     *is_start_flag = 0;
@@ -1139,7 +1172,7 @@ void injection_reload_from_drag(int *is_start_flag, int catch_timeout){ //引き
 //ライブラリに入れたいなーーー
 #define MAX_BUTTONS 16 
 static uint32_t lastPressTime[MAX_BUTTONS] = {0};
-bool getBtnMultiState(const uint8_t *buttons, uint8_t numButtons, uint32_t threshold){
+bool getBtnMultiState(const int *buttons, uint8_t numButtons, uint32_t threshold){
   uint32_t now = HAL_GetTick();
   uint32_t minTime = 0xFFFFFFFF;
   uint32_t maxTime = 0;
