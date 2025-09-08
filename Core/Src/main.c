@@ -330,8 +330,8 @@ int main(void)
     } 
 
     if(injection_set_BTN) is_start_injection_set = 1;   //射出装填
-    //if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1, 500);
-    if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1); //(チャージのみ)
+    if(is_start_injection_set) injection_set(&is_start_injection_set, 1, 1, 500);
+    //if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1); //(チャージのみ)
     
     if(arm_catch_position_BTN) MCU_arm_control(&hcan1, 2, arm_catch); //つかむ位置まで移動
     
@@ -1047,7 +1047,6 @@ bool injection_charge(int *is_start_flag, bool Black_charge_doProsess, bool Whit
 }
 
 void injection_set(int *is_start_flag, bool Black_charge_doProsess, bool White_charge_doProsess, int release_timeout){//射出にセット 自動(アーム上に移動⇒装填) //naosi time out
-  static int charge_done = 0;
   static int arm_move_done = 0;
   static int injection_set_start_time = 0;
 
@@ -1056,7 +1055,7 @@ void injection_set(int *is_start_flag, bool Black_charge_doProsess, bool White_c
     MCU_arm_control(&hcan1, 2, arm_injection); 
     injection_set_start_time = HAL_GetTick();
   }
-  if(injection_charge(&null, Black_charge_doProsess, White_charge_doProsess)) charge_done = 1;
+  if(Black_charge_state == 0 || Black_charge_state == 0) injection_charge(&null, !Black_charge_state, !Black_charge_state);
   if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == arm_injection ){
     arm_move_done = 1;
     printf("recieve injection move done \n\r");
@@ -1065,11 +1064,10 @@ void injection_set(int *is_start_flag, bool Black_charge_doProsess, bool White_c
   }
 
   
-  if(Black_charge_state ==1 && White_charge_state == 1 && arm_move_done == 1){ 
-    if((HAL_GetTick() - injection_set_start_time <= release_timeout) && RU_control(&hcan1, 1, catch_relay_port, 0)){ //naosu
+  if(Black_charge_state == 1 && White_charge_state == 1 && arm_move_done == 1){ 
+    if((HAL_GetTick() - injection_set_start_time >= release_timeout) && RU_control(&hcan1, 1, catch_relay_port, 0)){ //naosu
       injection_set_start_time = 0;
       catch_state = 0; //キャッチ機構の状態更新
-      charge_done = 0;
       arm_move_done = 0;
       *is_start_flag = 0;
       data_MCU2[1] = 0; //データ使い終わったよ
