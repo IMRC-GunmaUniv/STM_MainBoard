@@ -5,6 +5,7 @@
 #include <stdio.h>
 
 #include "main.h"
+#include <stdbool.h>
 #include "imrc_RU_control.h"
 
 static int MCU_move_unit_id = 0;
@@ -56,7 +57,7 @@ void MCU_move(int DIR,int spead,int reverse){
 
 //---関東夏ロボコン2025---
 int Last_is_injection_enable;
-void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int is_injection_enable){
+void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int is_injection_enable){//廃止
     if(is_injection_enable == Last_is_injection_enable){
         return; 
     }else{
@@ -67,17 +68,55 @@ void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int is_injection_en
     }
 }
 
-int last_arm_command = 0;
-void MCU_arm_control(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int command){
+static int MCU_arm_unit_id = 0;
+static CAN_HandleTypeDef *MCU_arm_hcan;
+static int *MCU_arm_position = NULL; // 最大速度
+static uint8_t *arm_data = NULL;
+static uint8_t *arm_data_type = NULL;
+int MCU_arm_Init(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int *arm_position ,uint8_t *__arm_data, uint8_t *__arm_data_type){
+    if (0 <= arm_unit_id && arm_unit_id <= 7){
+        MCU_arm_hcan = arm_hcan;
+        MCU_arm_unit_id = arm_unit_id;
+        MCU_arm_position = arm_position;
+        arm_data =  __arm_data;
+        arm_data_type =  __arm_data_type;
+        
+    }else{
+        return -1;
+    }
+
+    return 0;
+
+}
+
+bool MCU_arm_control(int command){
+    static int is_moving = 0;
+    static int last_arm_command = 0;
+    
     if(command == last_arm_command){
-        return; // コマンドが前回と同じ場合は何もしない
+        return 0; // コマンドが前回と同じ場合は何もしない
+    }else if(command == *MCU_arm_position){
+        printf("Already this position\n\r");
+        return true;
     }else{
         uint8_t body[1] = {command};
-        printf("MCU arm command: %d\n\r", body[0]);
-        ecan_sendPacketMtoU(arm_hcan, 16, arm_unit_id, 3, 0, 1, body);
+        printf("send MCU arm command: %d\n\r", body[0]);
+        ecan_sendPacketMtoU(MCU_arm_hcan, 16, MCU_arm_unit_id, 3, 0, 1, body);
         last_arm_command = command;
+        is_moving = 1;
     }
-    
+
+    if(is_moving == 1){
+        if(arm_data_type[0] == 3 && arm_data_type[1] ==1 && arm_data[1] == command){
+            *MCU_arm_position = command;
+            is_moving = 0;
+            printf("moving done \t curennte position:%d\n\r",*MCU_arm_position);
+            return true;
+        }
+    }{
+        printf("moving to position %d\n\r",command);
+    }
+    return false;
 }
 
 

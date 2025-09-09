@@ -5,6 +5,7 @@
 // Version 1.0
 
 #include "stm32f4xx_hal.h"
+#include <stdbool.h>
 
 #define RIGHT 0
 #define FRONT_RIGHT 1
@@ -26,12 +27,17 @@ void MCU_move(int DIR,int spead, int reverse); //移動
 //---関東夏ロボコン2025---
 void MCU_injection(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int enable); //慣性命令
 
-#define arm_null 0
-#define arm_injection 1
-#define arm_aim 2
-#define arm_catch 3
-#define arm_drag 4
-void MCU_arm_control(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int command); //アーム制御命令
+
+int MCU_arm_Init(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int *arm_position ,uint8_t *__arm_data, uint8_t *__arm_data_type);
+
+#define null_position 0
+#define injection_position 1
+#define aim_position 2
+#define catch_position 3
+#define drag_position 4
+bool MCU_arm_control(int command); //アーム制御命令
+
+
 
 
 
