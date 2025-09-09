@@ -94,7 +94,7 @@ bool MCU_arm_control(int command){
     static int last_arm_command = 0;
     
     if(command == last_arm_command){
-        return 0; // コマンドが前回と同じ場合は何もしない
+        return false; // コマンドが前回と同じ場合は何もしない
     }else if(command == *MCU_arm_position){
         printf("Already this position\n\r");
         return true;
@@ -110,7 +110,7 @@ bool MCU_arm_control(int command){
         if(arm_data_type[0] == 3 && arm_data_type[1] ==1 && arm_data[1] == command){
             *MCU_arm_position = command;
             is_moving = 0;
-            printf("moving done \t curennte position:%d\n\r",*MCU_arm_position);
+            printf("moving done \t current position:%d\n\r",*MCU_arm_position);
             return true;
         }
     }{
