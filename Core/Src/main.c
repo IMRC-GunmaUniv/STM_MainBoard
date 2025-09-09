@@ -330,71 +330,82 @@ int main(void)
 		allBtnAxiState(); //ボタンの状態を更新
 		handleMovement(); //移動（左右スティック） R1で速度を遅くする
 
-		if(getBtnMultiState(send_calibration_BTN, 2, 70)){ //キャリブレーション送信
-			uint8_t calibration_body[1] = {1};
-			ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
-		}else if(arm_aim_Position_BTN){  //箱狙う位置　ok
+		if(injection_set_BTN){
+			MCU_arm_control(injection_position);
+		}else if(arm_aim_Position_BTN){
 			MCU_arm_control(aim_position);
-		} 
+		}else if(arm_catch_position_BTN){
+			MCU_arm_control(catch_position);
+		}else if(arm_drag_BTN){
+			MCU_arm_control(drag_position);
+		}
 
-		if(injection_set_BTN) is_start_injection_set = 1;   //射出装填　新
-		if(is_start_injection_set == 1){
-			if(injection_set(500)) is_start_injection_set = 0;
-			//if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1); //(チャージのみ)
-		} 
+
+		// if(getBtnMultiState(send_calibration_BTN, 2, 70)){ //キャリブレーション送信
+		// 	uint8_t calibration_body[1] = {1};
+		// 	ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
+		// }else if(arm_aim_Position_BTN){  //箱狙う位置　ok
+		// 	MCU_arm_control(aim_position);
+		// } 
+
+		// if(injection_set_BTN) is_start_injection_set = 1;   //射出装填　新
+		// if(is_start_injection_set == 1){
+		// 	if(injection_set(500)) is_start_injection_set = 0;
+		// 	//if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1); //(チャージのみ)
+		// } 
 		
-		if(arm_catch_position_BTN) MCU_arm_control(catch_position); //とる位置まで移動　ok
+		// if(arm_catch_position_BTN) MCU_arm_control(catch_position); //とる位置まで移動　ok
 		
-		if(arm_drag_BTN) is_start_catch_drag = 1; //引きずる機構に移動(自動)　新
-		if(is_start_catch_drag){
-			if(arm_drag_set(1000) ) is_start_catch_drag = 0;
-		} 
+		// if(arm_drag_BTN) is_start_catch_drag = 1; //引きずる機構に移動(自動)　新
+		// if(is_start_catch_drag){
+		// 	if(arm_drag_set(1000) ) is_start_catch_drag = 0;
+		// } 
 
 
-		//射出関連
-		if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填 新
-		if(is_start_reload_from_drag_BTN) {
-			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag_BTN = 0;
-		}
+		// //射出関連
+		// if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填 新
+		// if(is_start_reload_from_drag_BTN) {
+		// 	if(injection_reload_from_drag(1000) ) is_start_reload_from_drag_BTN = 0;
+		// }
 		
-		if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出 ok
-			injection_release(&is_start_injection_release, 1, 1);
-		}else if(White_injection_release_BTN){//白射出 ok
-			injection_release(&is_start_injection_release, 0, 1);
-		}else if(Black_injection_release_BTN){//黒射出 ok
-			injection_release(&is_start_injection_release, 1, 0);
-		}
+		// if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出 ok
+		// 	injection_release(&is_start_injection_release, 1, 1);
+		// }else if(White_injection_release_BTN){//白射出 ok
+		// 	injection_release(&is_start_injection_release, 0, 1);
+		// }else if(Black_injection_release_BTN){//黒射出 ok
+		// 	injection_release(&is_start_injection_release, 1, 0);
+		// }
 
 
-		//つかむ機構
-		if(catch_open_BTN){//つかむアーム開 ok
-			catch_open(1);
-		}else if(catch_close_BTN){//つかむアーム閉 ok
-			catch_close(1);
-		}
+		// //つかむ機構
+		// if(catch_open_BTN){//つかむアーム開 ok
+		// 	catch_open(1);
+		// }else if(catch_close_BTN){//つかむアーム閉 ok
+		// 	catch_close(1);
+		// }
 
-		//その他
-		if (reverse_BTN != Last_reverse_state){ //動作反転 ok
-			if (reverse_BTN) {
-				HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-				reverse = !reverse;
-			}
-			Last_reverse_state = reverse_BTN;
-		}
+		// //その他
+		// if (reverse_BTN != Last_reverse_state){ //動作反転 ok
+		// 	if (reverse_BTN) {
+		// 		HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+		// 		reverse = !reverse;
+		// 	}
+		// 	Last_reverse_state = reverse_BTN;
+		// }
 		
-		if(LED_BTN != last_LED_state){ //昆虫図鑑完成 ok
-			if (LED_BTN) {
-				LED_state = !LED_state;
-				printf("LED State:%d\n\r",LED_state);
-				RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
-			}
-			last_LED_state = LED_BTN;
-		}
+		// if(LED_BTN != last_LED_state){ //昆虫図鑑完成 ok
+		// 	if (LED_BTN) {
+		// 		LED_state = !LED_state;
+		// 		printf("LED State:%d\n\r",LED_state);
+		// 		RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
+		// 	}
+		// 	last_LED_state = LED_BTN;
+		// }
 
-		if(beetle_set_BTN) is_start_beetle_set = 1; //カブトムシ装填
-		if(is_start_beetle_set){
-			if(injection_charge(1, 0) ) is_start_beetle_set = 0;
-		} 
+		// if(beetle_set_BTN) is_start_beetle_set = 1; //カブトムシ装填
+		// if(is_start_beetle_set){
+		// 	if(injection_charge(1, 0) ) is_start_beetle_set = 0;
+		// } 
 
     /* USER CODE END WHILE */
 
