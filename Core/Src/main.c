@@ -103,9 +103,10 @@ int inertia_flag = 0;
 uint32_t inertia_start_time = 0;
 int is_start_injection_release = 0;
 int is_start_injection_set = 0;
-int is_start_catch_drag = 0;
+int is_start_Auto_drag = 0;
 int is_start_beetle_set = 0;
 int is_start_reload_from_drag_BTN = 0;
+int is_start_move_to_catch = 0;
 int catch_state = 0;
 int null;
 int Black_charge_state = 0; //射出チャージ時:1 非チャージ時:0
@@ -135,7 +136,7 @@ float connection_time[]={0,0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU1, 
 uint32_t Rx1_index = 0;
 uint32_t Rx1_entry = 0;
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
-	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
+	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, &RxData1) == HAL_OK){
 		id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
 		ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
 		ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
@@ -293,6 +294,8 @@ int main(void)
   /* USER CODE BEGIN WHILE */
 	
 	PCU_voltage_recovery(); //PCUの電圧を復帰
+	uint8_t calibration_body[1] = {1};
+	ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
 
 	//ローカル変数
 	int Last_reverse_state = 0; 
@@ -307,105 +310,100 @@ int main(void)
 		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin); //カブトムシ装填
 		int send_calibration_BTN[] = {BTN_R1 , BTN_Y}; //キャリブレーション信号送信
 
-		int injection_set_BTN = getBtnState(BTN_X);  //射出装填 △
-		int arm_aim_Position_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
-		int arm_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
-		int arm_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
+		int set_injection_BTN = getBtnState(BTN_X);  //射出装填 △
+		int arm_move_to_aim_Position_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
+		int arm_move_to_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
+		int arm_move_to_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
 
 		int reload_from_drag_BTN = getBtnState(BTN_UP); //自動装填   
-		int reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
+		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
 		int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
-
-		int Black_injection_release_BTN = getBtnState(BTN_RIGHT); //黒い射出、射出
+		
 		int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1}; //全射出
+		int Black_injection_release_BTN = getBtnState(BTN_RIGHT); //黒い射出、射出
 		int White_injection_release_BTN = getBtnState(BTN_L1); //白い射出、射出
 
 		int catch_open_BTN = getBtnState(BTN_L2); //つかむ機構　開
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
 		//R1は速度を30に設定（handleMovement内）
 
+		//see_MCU2_data();
 
 
 		//---コントローラーのボタン処理---
 		allBtnAxiState(); //ボタンの状態を更新
 		handleMovement(); //移動（左右スティック） R1で速度を遅くする
 
-		if(injection_set_BTN){
-			MCU_arm_control(injection_position);
-		}else if(arm_aim_Position_BTN){
+		if(getBtnMultiState(send_calibration_BTN, 2, 70)){ //キャリブレーション送信
+			uint8_t calibration_body[1] = {1};
+			ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
+		}else if(arm_move_to_aim_Position_BTN){  //箱狙う位置　ok
 			MCU_arm_control(aim_position);
-		}else if(arm_catch_position_BTN){
-			MCU_arm_control(catch_position);
-		}else if(arm_drag_BTN){
-			MCU_arm_control(drag_position);
+		} 
+
+		if(set_injection_BTN) is_start_injection_set = 1;   //射出装填　新
+		if(is_start_injection_set == 1){
+			if(injection_set(500)) is_start_injection_set = 0;
+			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
+		} 
+		
+		if(arm_move_to_catch_position_BTN) is_start_move_to_catch = 1;
+		if(is_start_move_to_catch){
+			if(MCU_arm_control(catch_position)) is_start_move_to_catch = 0; //とる位置まで移動　ok
+		} 
+
+		if(arm_move_to_drag_BTN) is_start_Auto_drag= 1; //引きずる機構に移動(自動)　新
+		if(is_start_Auto_drag){
+			if(arm_drag_set(1000) ) is_start_Auto_drag = 0;
+		} 
+
+
+		//射出関連
+		if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填 新
+		if(is_start_reload_from_drag_BTN) {
+			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag_BTN = 0;
+		}
+		
+
+
+		//-----------------------
+		if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出 ok
+			injection_release(&is_start_injection_release, 1, 1);
+		}else if(White_injection_release_BTN){//白射出 ok
+			injection_release(&is_start_injection_release, 0, 1);
+		}else if(Black_injection_release_BTN){//黒射出 ok
+			injection_release(&is_start_injection_release, 1, 0);
 		}
 
+		//つかむ機構
+		if(catch_open_BTN){//つかむアーム開 ok
+			catch_open(1);
+		}else if(catch_close_BTN){//つかむアーム閉 ok
+			catch_close(1);
+		}
 
-		// if(getBtnMultiState(send_calibration_BTN, 2, 70)){ //キャリブレーション送信
-		// 	uint8_t calibration_body[1] = {1};
-		// 	ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
-		// }else if(arm_aim_Position_BTN){  //箱狙う位置　ok
-		// 	MCU_arm_control(aim_position);
-		// } 
-
-		// if(injection_set_BTN) is_start_injection_set = 1;   //射出装填　新
-		// if(is_start_injection_set == 1){
-		// 	if(injection_set(500)) is_start_injection_set = 0;
-		// 	//if(is_start_injection_set) injection_charge(&is_start_injection_set, 1, 1); //(チャージのみ)
-		// } 
+		//その他
+		if (move_reverse_BTN != Last_reverse_state){ //動作反転
+			if (move_reverse_BTN) {
+				HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
+				reverse = !reverse;
+			}
+			Last_reverse_state = move_reverse_BTN;
+		}
 		
-		// if(arm_catch_position_BTN) MCU_arm_control(catch_position); //とる位置まで移動　ok
-		
-		// if(arm_drag_BTN) is_start_catch_drag = 1; //引きずる機構に移動(自動)　新
-		// if(is_start_catch_drag){
-		// 	if(arm_drag_set(1000) ) is_start_catch_drag = 0;
-		// } 
+		if(LED_BTN != last_LED_state){ //昆虫図鑑完成
+			if (LED_BTN) {
+				LED_state = !LED_state;
+				printf("LED State:%d\n\r",LED_state);
+				RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
+			}
+			last_LED_state = LED_BTN;
+		}
 
-
-		// //射出関連
-		// if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填 新
-		// if(is_start_reload_from_drag_BTN) {
-		// 	if(injection_reload_from_drag(1000) ) is_start_reload_from_drag_BTN = 0;
-		// }
-		
-		// if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出 ok
-		// 	injection_release(&is_start_injection_release, 1, 1);
-		// }else if(White_injection_release_BTN){//白射出 ok
-		// 	injection_release(&is_start_injection_release, 0, 1);
-		// }else if(Black_injection_release_BTN){//黒射出 ok
-		// 	injection_release(&is_start_injection_release, 1, 0);
-		// }
-
-
-		// //つかむ機構
-		// if(catch_open_BTN){//つかむアーム開 ok
-		// 	catch_open(1);
-		// }else if(catch_close_BTN){//つかむアーム閉 ok
-		// 	catch_close(1);
-		// }
-
-		// //その他
-		// if (reverse_BTN != Last_reverse_state){ //動作反転 ok
-		// 	if (reverse_BTN) {
-		// 		HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
-		// 		reverse = !reverse;
-		// 	}
-		// 	Last_reverse_state = reverse_BTN;
-		// }
-		
-		// if(LED_BTN != last_LED_state){ //昆虫図鑑完成 ok
-		// 	if (LED_BTN) {
-		// 		LED_state = !LED_state;
-		// 		printf("LED State:%d\n\r",LED_state);
-		// 		RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
-		// 	}
-		// 	last_LED_state = LED_BTN;
-		// }
-
-		// if(beetle_set_BTN) is_start_beetle_set = 1; //カブトムシ装填
-		// if(is_start_beetle_set){
-		// 	if(injection_charge(1, 0) ) is_start_beetle_set = 0;
-		// } 
+		if(beetle_set_BTN) is_start_beetle_set = 1; //カブトムシ装填
+		if(is_start_beetle_set){
+			if(injection_charge(1, 0) ) is_start_beetle_set = 0;
+		} 
 
     /* USER CODE END WHILE */
 
@@ -936,6 +934,32 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 
 	}
 
+}
+
+int MCU_arm_control(int command){
+    static int is_moving = 0;
+    static int last_arm_command = 0;
+    
+    if(command != last_arm_command && is_moving == 0){
+        uint8_t body[1] = {command};
+        printf("send MCU arm command: %d\n\r", body[0]);
+        ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 0, 1, body);
+        last_arm_command = command;
+        is_moving = 1;
+    }
+
+    if(is_moving == 1){
+        if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == command){
+            is_moving = 0;
+            arm_position = command;
+            printf("moving done \t current position:%d\n\r",arm_position);
+            return 1;
+        }else{
+            printf("moving to position %d\n\r",command);
+        }
+
+    }
+    return 0;
 }
 
 void ALL_LED_OFF(void){//全LED消灯

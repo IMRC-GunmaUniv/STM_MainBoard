@@ -89,34 +89,45 @@ int MCU_arm_Init(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int *arm_position
 
 }
 
-bool MCU_arm_control(int command){
-    static int is_moving = 0;
-    static int last_arm_command = 0;
-    
-    if(command == last_arm_command){
-        return false; // コマンドが前回と同じ場合は何もしない
-    }else if(command == *MCU_arm_position){
-        printf("Already this position\n\r");
-        return true;
-    }else{
-        uint8_t body[1] = {command};
-        printf("send MCU arm command: %d\n\r", body[0]);
-        ecan_sendPacketMtoU(MCU_arm_hcan, 16, MCU_arm_unit_id, 3, 0, 1, body);
-        last_arm_command = command;
-        is_moving = 1;
-    }
 
-    if(is_moving == 1){
-        if(arm_data_type[0] == 3 && arm_data_type[1] ==1 && arm_data[1] == command){
-            *MCU_arm_position = command;
-            is_moving = 0;
-            printf("moving done \t current position:%d\n\r",*MCU_arm_position);
-            return true;
-        }
-    }{
-        printf("moving to position %d\n\r",command);
+// int MCU_arm_control(int command){
+//     static int is_moving = 0;
+//     static int last_arm_command = 0;
+
+//     if(command == last_arm_command){
+//         return false; // コマンドが前回と同じ場合は何もしない
+//     }else if(command == MCU_arm_position){
+//         printf("Already this position\n\r");
+//         return 1;
+//     }else{
+//         uint8_t body[1] = {command};
+//         printf("send MCU arm command: %d\n\r", body[0]);
+//         ecan_sendPacketMtoU(MCU_arm_hcan, 16, MCU_arm_unit_id, 3, 0, 1, body);
+//         last_arm_command = command;
+//         is_moving = 1;
+//     }
+
+//     if(is_moving == 1){
+//         printf("aaa");
+//         if(arm_data_type[0] == 3 && arm_data_type[1] == 1 && arm_data[1] == command){
+//             is_moving = 0;
+//             *MCU_arm_position = command;
+//             //printf("moving done \t current position:%d\n\r",*MCU_arm_position);
+//             return 1;
+//         }else{
+//             printf("moving to position %d\n\r",command);
+//         }
+        
+//     }
+//     return 0;
+// }
+
+void see_MCU2_data(void){
+    printf("index:%d \t entry:%d data: ",arm_data_type[0],arm_data_type[1]);
+    for(int i=1 ; i<7 ;i++){
+        printf("%d",arm_data[i]);
     }
-    return false;
+    printf("\n\r");
 }
 
 

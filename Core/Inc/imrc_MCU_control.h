@@ -35,7 +35,8 @@ int MCU_arm_Init(CAN_HandleTypeDef *arm_hcan, int arm_unit_id, int *arm_position
 #define aim_position 2
 #define catch_position 3
 #define drag_position 4
-bool MCU_arm_control(int command); //アーム制御命令
+//int MCU_arm_control(int command); //アーム制御命令
+void see_MCU2_data(void);
 
 
 
