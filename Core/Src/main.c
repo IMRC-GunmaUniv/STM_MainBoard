@@ -85,6 +85,8 @@ bool arm_drag_set(int);
 void catch_open(int);
 void catch_close(int);
 bool injection_reload_from_drag(int);
+int MCU_arm_control(int);
+int send_calibration_signal(void);
 
 
 
@@ -101,12 +103,6 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 int reverse = 0; // 0:通常, 1:反転
 int inertia_flag = 0;
 uint32_t inertia_start_time = 0;
-int is_start_injection_release = 0;
-int is_start_injection_set = 0;
-int is_start_Auto_drag = 0;
-int is_start_beetle_set = 0;
-int is_start_reload_from_drag_BTN = 0;
-int is_start_move_to_catch = 0;
 int catch_state = 0;
 int null;
 int Black_charge_state = 0; //射出チャージ時:1 非チャージ時:0
@@ -136,7 +132,7 @@ float connection_time[]={0,0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU1, 
 uint32_t Rx1_index = 0;
 uint32_t Rx1_entry = 0;
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
-	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, &RxData1) == HAL_OK){
+	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
 		id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
 		ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
 		ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
@@ -298,20 +294,28 @@ int main(void)
 	ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
 
 	//ローカル変数
+	int is_start_move_to_aim_position = 0;
+	int is_start_calibration = 0;
+	int is_start_injection_release = 0;
+	int is_start_injection_set = 0;
+	int is_start_Auto_drag = 0;
+	int is_start_beetle_set = 0;
+	int is_start_reload_from_drag_BTN = 0;
+	int is_start_move_to_catch = 0;
 	int Last_reverse_state = 0; 
 	int last_LED_state = 0;
-	int LED_state;
+	int LED_state = 0;
 
 	while(1){
 		connection_monitoring(1700); //各ユニットとの接続確認    
-		PCU_survival_signal(1000);  //PCUに生存信号送信 
+		PCU_survival_signal(200);  //PCUに生存信号送信 
 
 		//ボタン指定
 		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin); //カブトムシ装填
 		int send_calibration_BTN[] = {BTN_R1 , BTN_Y}; //キャリブレーション信号送信
 
 		int set_injection_BTN = getBtnState(BTN_X);  //射出装填 △
-		int arm_move_to_aim_Position_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
+		int arm_move_to_aim_position_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
 		int arm_move_to_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
 		int arm_move_to_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
 
@@ -334,32 +338,36 @@ int main(void)
 		allBtnAxiState(); //ボタンの状態を更新
 		handleMovement(); //移動（左右スティック） R1で速度を遅くする
 
-		if(getBtnMultiState(send_calibration_BTN, 2, 70)){ //キャリブレーション送信
-			uint8_t calibration_body[1] = {1};
-			ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
-		}else if(arm_move_to_aim_Position_BTN){  //箱狙う位置　ok
-			MCU_arm_control(aim_position);
-		} 
-
+		if(getBtnMultiState(send_calibration_BTN, 2, 70)) is_start_calibration = 1;
+		if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填 新
 		if(set_injection_BTN) is_start_injection_set = 1;   //射出装填　新
-		if(is_start_injection_set == 1){
-			if(injection_set(500)) is_start_injection_set = 0;
-			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
-		} 
-		
 		if(arm_move_to_catch_position_BTN) is_start_move_to_catch = 1;
-		if(is_start_move_to_catch){
-			if(MCU_arm_control(catch_position)) is_start_move_to_catch = 0; //とる位置まで移動　ok
-		} 
-
 		if(arm_move_to_drag_BTN) is_start_Auto_drag= 1; //引きずる機構に移動(自動)　新
-		if(is_start_Auto_drag){
-			if(arm_drag_set(1000) ) is_start_Auto_drag = 0;
+		if(arm_move_to_aim_position_BTN) is_start_move_to_aim_position = 1;
+		
+
+
+		if(is_start_calibration){ //キャリブレーション送信
+			if(send_calibration_signal)	is_start_calibration = 0;
+
+		}else if(is_start_move_to_aim_position){  //箱狙う位置　ok
+			if(MCU_arm_control(aim_position))	is_start_move_to_aim_position = 0;
+			
+		}else if(is_start_injection_set == 1){
+			if(injection_set(500))	is_start_injection_set = 0;
+			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
+
+		}else if(is_start_move_to_catch){
+			if(MCU_arm_control(catch_position)) is_start_move_to_catch = 0; //とる位置まで移動　ok
+
+		}else if(is_start_Auto_drag){
+			if(arm_drag_set(1000))	is_start_Auto_drag = 0;
+
 		} 
 
 
 		//射出関連
-		if(reload_from_drag_BTN) is_start_reload_from_drag_BTN = 1; //引きずる機構から再装填 新
+
 		if(is_start_reload_from_drag_BTN) {
 			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag_BTN = 0;
 		}
@@ -1217,6 +1225,11 @@ bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から�
 
 }
 
+int send_calibration_signal(void){
+	uint8_t calibration_body[1] = {1};
+	ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
+	return 1;
+}
 
 //ライブラリに入れたいなーーー
 #define MAX_BUTTONS 16 
