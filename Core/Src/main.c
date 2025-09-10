@@ -312,7 +312,7 @@ int main(void)
 		PCU_survival_signal(200);  //PCUに生存信号送信 
 
 		//ボタン指定
-		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin); //カブトムシ装填
+		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW4_GPIO_Port, SW4_Pin); //カブトムシ装填
 		int send_calibration_BTN[] = {BTN_R1 , BTN_LEFT}; //キャリブレーション信号送信
 
 		int set_injection_BTN = getBtnState(BTN_X);  //射出装填 △
@@ -563,7 +563,6 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 0 */
 
-  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -576,15 +575,6 @@ static void MX_TIM2_Init(void)
   htim2.Init.Period = 2499;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
-  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
-  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
-  {
-    Error_Handler();
-  }
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -759,9 +749,9 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : SW1_Pin SW2_Pin SW3_Pin SW4_Pin
+  /*Configure GPIO pins : SW4_Pin SW3_Pin SW2_Pin SW1_Pin
                            DIP4_Pin DIP3_Pin */
-  GPIO_InitStruct.Pin = SW1_Pin|SW2_Pin|SW3_Pin|SW4_Pin
+  GPIO_InitStruct.Pin = SW4_Pin|SW3_Pin|SW2_Pin|SW1_Pin
                           |DIP4_Pin|DIP3_Pin;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
@@ -1012,6 +1002,7 @@ void ALL_LED_OFF(void){//全LED消灯
 void handleMovement(void){//移動　スティッアーム
 	int DIR = 0; //移動方向
 	int spead = 0; //速度
+	static int slow_move = 0;
 
 	//---移動　処理---
 	
@@ -1061,9 +1052,13 @@ void handleMovement(void){//移動　スティッアーム
 
 	} 
 
-	if(getBtnState(BTN_R1)) spead = 30;
+	if(getBtnState(BTN_R1)){
+		slow_move=1;
+	} else{
+		slow_move=0;
+	}
 	//printf("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
-	MCU_move(DIR, spead, reverse); //MCUに移動命令
+	MCU_move(DIR, spead, reverse,slow_move); //MCUに移動命令
 }
 
 void inertia_injection(int relay_NO){//慣性射出

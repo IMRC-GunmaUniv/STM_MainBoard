@@ -27,10 +27,10 @@ int MCU_move_Init(CAN_HandleTypeDef *ptr_hcan, int unit_id ,int max_speed){
     return 0;
 }
 
-static uint8_t move_body[3]= {0,0,0};
-static uint8_t pre_move_body[3]= {0,0,0};
+static uint8_t move_body[4]= {0,0,0,0};
+static uint8_t pre_move_body[4]= {0,0,0,0};
 
-void MCU_move(int DIR,int spead,int reverse){
+void MCU_move(int DIR,int spead,int reverse, int slow_move){
     if (spead > MCU_max_speed){
         spead = MCU_max_speed; 
     }
@@ -38,6 +38,7 @@ void MCU_move(int DIR,int spead,int reverse){
     move_body[0]=DIR;
     move_body[1]=spead;
     move_body[2]=reverse; 
+    move_body[3]=slow_move;
 
     int isChanged = 0;
     if(move_body[0] != pre_move_body[0] || move_body[1] != pre_move_body[1] || move_body[2] != pre_move_body[2]){
@@ -47,10 +48,11 @@ void MCU_move(int DIR,int spead,int reverse){
         pre_move_body[0] = move_body[0]; //DIR
         pre_move_body[1] = move_body[1]; //SPREED 
         pre_move_body[2] = move_body[2]; //反転  
+        pre_move_body[3] = move_body[3]; // 
 
         //printf("MCU move: DIR: %d, Speed: %d\n\r", pre_move_body[0], pre_move_body[1]);
 
-        ecan_sendPacketMtoU(MCU_move_hcan, 16, 1, 3, 0, 3, pre_move_body);
+        ecan_sendPacketMtoU(MCU_move_hcan, 16, 1, 3, 0, 4, pre_move_body);
         isChanged = 0;
     }
 }   
