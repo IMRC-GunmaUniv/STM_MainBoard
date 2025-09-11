@@ -414,6 +414,9 @@ int main(void)
 			Last_reverse_state = move_reverse_BTN;
 		}
 		
+		if(reverse == 1) RU_Toggle_relay(&hcan1, 1, LED_relay_port,1000,300);
+
+
 		if(LED_BTN != last_LED_state){ //昆虫図鑑完成
 			if (LED_BTN) {
 				LED_state = !LED_state;
