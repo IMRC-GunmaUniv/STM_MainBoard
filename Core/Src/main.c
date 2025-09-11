@@ -79,7 +79,7 @@ void ALL_LED_OFF(void);
 void handleMovement(void);
 void inertia_injection(int);
 void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef *, uint32_t );
-bool injection_set(int);
+bool injection_set(int,int);
 void injection_release(int *, bool, bool);
 bool getBtnMultiState(const int *, uint8_t , uint32_t);
 bool injection_charge(bool , bool );
@@ -390,7 +390,7 @@ int main(void)
 			if(MCU_arm_control(aim_position, 4000))	is_start_move_to_aim_position = 0;
 			
 		}else if(is_start_injection_set == 1){ //射出装填
-			if(injection_set(500))	is_start_injection_set = 0;
+			if(injection_set(500,7000))	is_start_injection_set = 0;
 			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
 
 		}else if(is_start_move_to_catch){ //アームキャッチポジ
@@ -410,11 +410,11 @@ int main(void)
 		}
 
 		if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出 ok
-			injection_release(&is_start_injection_release, 1, 1);
+			injection_release(&ALL_injection_buttons, 1, 1);
 		}else if(White_injection_release_BTN){//白射出 ok
-			injection_release(&is_start_injection_release, 0, 1);
+			injection_release(&White_injection_release_BTN, 0, 1);
 		}else if(Black_injection_release_BTN){//黒射出 ok
-			injection_release(&is_start_injection_release, 1, 0);
+			injection_release(&Black_injection_release_BTN, 1, 0);
 		}
 
 		//つかむ機構
@@ -449,6 +449,10 @@ int main(void)
 		if(is_start_beetle_set){
 			if(injection_charge(1, 1) ) is_start_beetle_set = 0;
 		} 
+		
+		if(!HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)){
+			ALL_LED_OFF();
+		}
 
     /* USER CODE END WHILE */
 
@@ -1178,9 +1182,11 @@ bool injection_charge(bool Black_charge_doProsess, bool White_charge_doProsess){
 
 }
 
-bool injection_set(int release_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
+bool injection_set(int release_timeout, int move_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
 	static uint32_t injection_set_start_time = 0;
+	printf("injection_set in\n\r");
 
+	if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
 	injection_charge(!Black_charge_state, !White_charge_state);
 	if(arm_position != injection_position) MCU_arm_control(injection_position, 6000);
 
@@ -1188,9 +1194,15 @@ bool injection_set(int release_timeout){//射出にセット 自動(アーム上
 		if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
 		if( (HAL_GetTick() - injection_set_start_time) >= release_timeout){
 			catch_open(1);
+			injection_set_start_time = 0;
+
 			return true;
 		}
 		
+	}else if((HAL_GetTick()-injection_set_start_time) >move_timeout){
+		injection_set_start_time = 0;
+		printf("move_timeout\n\r");
+
 	}
 	return false;
 }
@@ -1200,8 +1212,8 @@ void injection_release(int *is_start_flag, bool Black_release_doProsess, bool Wh
 	if(Black_charge_state != 1 && White_charge_state != 1){
 		return;
 	}else{
-		if(Black_release_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, Black_lock_position);  //ロック解除
-		if(White_release_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, White_lock_position);  //ロック解除
+		if(Black_release_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, Black_initial_position);  //ロック解除
+		if(White_release_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, White_initial_position);  //ロック解除
 		if(Black_release_doProsess) Black_charge_state = !Black_release_doProsess; //チャージ状況保存
 		if(White_release_doProsess) White_charge_state = !White_release_doProsess; //チャージ状況保存
 		printf("change state  release1 : %d  release2 : %d \n\r", Black_charge_state, White_charge_state);
@@ -1253,6 +1265,7 @@ int MCU_arm_control(int command, int limitTime){
         arm_position = 10;
 		start_arm_control_time = 0;
 		printf("time out\n\r");
+		HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,1);
 		return 1;
 	}
     return 0;

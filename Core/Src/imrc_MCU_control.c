@@ -41,14 +41,14 @@ void MCU_move(int DIR,int spead,int reverse, int slow_move){
     move_body[3]=slow_move;
 
     int isChanged = 0;
-    if(move_body[0] != pre_move_body[0] || move_body[1] != pre_move_body[1] || move_body[2] != pre_move_body[2]){
+    if(move_body[0] != pre_move_body[0] || move_body[1] != pre_move_body[1] || move_body[2] != pre_move_body[2] || move_body[3] != pre_move_body[3]){
         isChanged = 1;
     }
     if(isChanged){
         pre_move_body[0] = move_body[0]; //DIR
         pre_move_body[1] = move_body[1]; //SPREED 
         pre_move_body[2] = move_body[2]; //反転  
-        pre_move_body[3] = move_body[3]; // 
+        pre_move_body[3] = move_body[3]; // ゆっくり
 
         //printf("MCU move: DIR: %d, Speed: %d\n\r", pre_move_body[0], pre_move_body[1]);
 
