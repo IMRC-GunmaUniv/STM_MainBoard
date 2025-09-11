@@ -1291,6 +1291,7 @@ bool arm_drag_set(int catch_timeout){
 			
 			}
 			
+			
 		}else{
 			MCU_arm_control(drag_position, 4000);
 			
