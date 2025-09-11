@@ -63,11 +63,20 @@ void PCU_voltage_recovery(void){
 }
 
 void PCU_survival_signal(uint32_t timeout){
-    static uint32_t last_signal_time = 0;
-    if (HAL_GetTick() - last_signal_time >= timeout) {
+    if(timeout == 0){
         ecan_sendEmptyPacketMtoU(PCU_hcan, 18, 1, 0, 5);
-        //printf("PCU survival signal sent\n\r");
-        last_signal_time = HAL_GetTick();
+
+    }else if(timeout > 0){
+        static uint32_t last_signal_time = 0;
+        if (HAL_GetTick() - last_signal_time >= timeout) {
+            ecan_sendEmptyPacketMtoU(PCU_hcan, 18, 1, 0, 5);
+            //printf("PCU survival signal sent\n\r");
+            last_signal_time = HAL_GetTick();
+        }
+
     }
+
+
+    
     
 }

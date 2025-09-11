@@ -54,6 +54,7 @@ CAN_HandleTypeDef hcan2;
 
 TIM_HandleTypeDef htim2;
 TIM_HandleTypeDef htim3;
+TIM_HandleTypeDef htim5;
 
 UART_HandleTypeDef huart3;
 
@@ -69,6 +70,7 @@ static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
+static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
 //プロトタイプ宣言
 void connection_monitoring(float); //ESPとの接続確認関数
@@ -192,6 +194,14 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
 	}
 }
 
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){//タイマー割り込み　生存信号
+	if (htim->Instance == TIM5){
+        ecan_sendEmptyPacketMtoU(&hcan1, 18, 1, 0, 5);
+    }
+	
+}
+
+
 //ピン命名
 #define GPIO_D1_TIM_CN TIM_CHANNEL_4
 #define GPIO_D3_TIM_CN TIM_CHANNEL_1
@@ -253,6 +263,7 @@ int main(void)
   MX_USART3_UART_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
+  MX_TIM5_Init();
   /* USER CODE BEGIN 2 */
 	
 	//CAN Setting
@@ -279,6 +290,8 @@ int main(void)
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_4);
 	HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
+	HAL_TIM_Base_Start_IT(&htim5); // TIM5 割り込みスタート
+
 
 	//射出
 	injection_Init(Black_charge_valve, GPIO_D1_TIM_HT, GPIO_D1_TIM_CN, White_charge_valve, GPIO_D3_TIM_HT, GPIO_D3_TIM_CN);
@@ -309,7 +322,7 @@ int main(void)
 
 	while(1){
 		connection_monitoring(1700); //各ユニットとの接続確認    
-		PCU_survival_signal(200);  //PCUに生存信号送信 
+		//PCU_survival_signal(200);  //PCUに生存信号送信 
 
 		//ボタン指定
 		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW4_GPIO_Port, SW4_Pin); //カブトムシ装填
@@ -341,7 +354,7 @@ int main(void)
 
 		//フラグ建築職人一級
 		if(is_start_injection_set){//射出セット中は何も受けつけない
-			
+			;
 
 		}else if(getBtnMultiState(send_calibration_BTN, 2, 800)){ 
 			is_start_reset();
@@ -570,6 +583,7 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -582,6 +596,15 @@ static void MX_TIM2_Init(void)
   htim2.Init.Period = 2499;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
   {
     Error_Handler();
@@ -631,6 +654,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 0 */
 
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
   TIM_OC_InitTypeDef sConfigOC = {0};
 
@@ -643,6 +667,15 @@ static void MX_TIM3_Init(void)
   htim3.Init.Period = 2499;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim3, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
   if (HAL_TIM_PWM_Init(&htim3) != HAL_OK)
   {
     Error_Handler();
@@ -665,6 +698,51 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 2 */
   HAL_TIM_MspPostInit(&htim3);
+
+}
+
+/**
+  * @brief TIM5 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM5_Init(void)
+{
+
+  /* USER CODE BEGIN TIM5_Init 0 */
+
+  /* USER CODE END TIM5_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM5_Init 1 */
+
+  /* USER CODE END TIM5_Init 1 */
+  htim5.Instance = TIM5;
+  htim5.Init.Prescaler = 59999;
+  htim5.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim5.Init.Period = 200;
+  htim5.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim5.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim5) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim5, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim5, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM5_Init 2 */
+
+  /* USER CODE END TIM5_Init 2 */
 
 }
 
@@ -962,43 +1040,6 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 
 }
 
-int MCU_arm_control(int command, int limitTime){
-    static int is_moving = 0;
-    static int last_arm_command = 0;
-	static uint32_t start_arm_control_time = 0;
-
-	if(command != last_arm_command) is_moving = 0;
-
-	if(start_arm_control_time == 0) start_arm_control_time = HAL_GetTick();
-    if(command != last_arm_command && is_moving == 0){
-        uint8_t body[1] = {command};
-        printf("send MCU arm command: %d\n\r", body[0]);
-        ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 0, 1, body);
-        last_arm_command = command;
-        is_moving = 1;
-    }
-
-    if(((HAL_GetTick() - start_arm_control_time )<= limitTime) && is_moving == 1 ){
-        if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == command){
-            is_moving = 0;
-            arm_position = command;
-			start_arm_control_time = 0;
-            printf("moving done \t current position:%d\n\r",arm_position);
-            return 1;
-        }else{
-            printf("moving to position %d\n\r",command);
-        }
-
-    }else if(((HAL_GetTick() - start_arm_control_time ) > limitTime) && is_moving == 1 ){
-		is_moving = 0;
-        arm_position = 10;
-		start_arm_control_time = 0;
-		printf("time out\n\r");
-		return 1;
-	}
-    return 0;
-}
-
 void ALL_LED_OFF(void){//全LED消灯
 	HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_RESET);
 	HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_RESET);
@@ -1131,6 +1172,23 @@ bool injection_charge(bool Black_charge_doProsess, bool White_charge_doProsess){
 
 }
 
+bool injection_set(int release_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
+	static uint32_t injection_set_start_time = 0;
+
+	injection_charge(!Black_charge_state, !White_charge_state);
+	if(arm_position != injection_position) MCU_arm_control(injection_position, 6000);
+
+	if(Black_charge_state == 1 && White_charge_state == 1 && arm_position == injection_position){
+		if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
+		if( (HAL_GetTick() - injection_set_start_time) >= release_timeout){
+			catch_open(1);
+			return true;
+		}
+		
+	}
+	return false;
+}
+
 void injection_release(int *is_start_flag, bool Black_release_doProsess, bool White_release_doProsess){//射出!!　
 	*is_start_flag = 0;
 	if(Black_charge_state != 1 && White_charge_state != 1){
@@ -1157,21 +1215,41 @@ void catch_close(int autoUpdate){
 	return;
 }
 
-bool injection_set(int release_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
-	static uint32_t injection_set_start_time = 0;
+int MCU_arm_control(int command, int limitTime){
+    static int is_moving = 0;
+    static int last_arm_command = 0;
+	static uint32_t start_arm_control_time = 0;
 
-	injection_charge(!Black_charge_state, !White_charge_state);
-	if(arm_position != injection_position) MCU_arm_control(injection_position, 6000);
+	if(command != last_arm_command) is_moving = 0;
 
-	if(Black_charge_state == 1 && White_charge_state == 1 && arm_position == injection_position){
-		if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
-		if( (HAL_GetTick() - injection_set_start_time) >= release_timeout){
-			catch_open(1);
-			return true;
-		}
-		
+	if(start_arm_control_time == 0) start_arm_control_time = HAL_GetTick();
+    if(command != last_arm_command && is_moving == 0){
+        uint8_t body[1] = {command};
+        printf("send MCU arm command: %d\n\r", body[0]);
+        ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 0, 1, body);
+        last_arm_command = command;
+        is_moving = 1;
+    }
+
+    if(((HAL_GetTick() - start_arm_control_time )<= limitTime) && is_moving == 1 ){
+        if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == command){
+            is_moving = 0;
+            arm_position = command;
+			start_arm_control_time = 0;
+            printf("moving done \t current position:%d\n\r",arm_position);
+            return 1;
+        }else{
+            printf("moving to position %d\n\r",command);
+        }
+
+    }else if(((HAL_GetTick() - start_arm_control_time ) > limitTime) && is_moving == 1 ){
+		is_moving = 0;
+        arm_position = 10;
+		start_arm_control_time = 0;
+		printf("time out\n\r");
+		return 1;
 	}
-	return false;
+    return 0;
 }
 
 bool arm_drag_set(int catch_timeout){
