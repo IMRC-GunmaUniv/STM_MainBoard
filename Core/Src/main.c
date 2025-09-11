@@ -219,9 +219,15 @@ TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3;
 
 //入力ピン　定義
 int Black_charge_valve = 1; //RUの射出Lリレー番号
-int White_charge_valve = 1; //RUの射出Rリレー番号
+int White_charge_valve = 2; //RUの射出Rリレー番号
 int catch_relay_port = 3; //RUのキャッチリレー番号
 int LED_relay_port = 4; //RUのLEDリレー番号
+
+int Black_initial_position = 40;
+int White_initial_position = 140;
+int Black_lock_position = 10;
+int White_lock_position = 170;
+
 
 
 /* USER CODE END Private
@@ -295,8 +301,8 @@ int main(void)
 
 	//射出
 	injection_Init(Black_charge_valve, GPIO_D1_TIM_HT, GPIO_D1_TIM_CN, White_charge_valve, GPIO_D3_TIM_HT, GPIO_D3_TIM_CN);
-	LD_220MG_SetAngle(Black_lock_Servo_HT, Black_lock_Servo_CN, 90); //ロック外し 初期位置
-	LD_220MG_SetAngle(White_lock_Servo_HT, White_lock_Servo_CN, 90); //ロック外し 初期位置
+	LD_220MG_SetAngle(Black_lock_Servo_HT, Black_lock_Servo_CN, Black_initial_position); //ロック外し 初期位置
+	LD_220MG_SetAngle(White_lock_Servo_HT, White_lock_Servo_CN, White_initial_position); //ロック外し 初期位置
 	 
 	unit_check(3000);//接続中のユニットを探す
 	
@@ -1032,6 +1038,8 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 	//printf("Disconect: %d\n\r", disconect);
 	if (disconect) {
 		PCU_voltage_cutoff();
+		LD_220MG_SetAngle(Black_lock_Servo_HT, Black_lock_Servo_CN, Black_initial_position); //ロック外し 初期位置
+		LD_220MG_SetAngle(White_lock_Servo_HT, White_lock_Servo_CN, White_initial_position); //ロック外し 初期位置
 
 	} else {
 		PCU_voltage_recovery();
@@ -1161,12 +1169,10 @@ bool injection_charge(bool Black_charge_doProsess, bool White_charge_doProsess){
 			White_charge_state = White_charge_doProsess; 
 			return true; //装填プログラム実装でき次第削除
 		}else if(check_time >=1500){//2
-			if(Black_charge_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, 10); //射出ロック
-			if(White_charge_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, 170); //射出ロック
+			if(Black_charge_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, Black_lock_position); //射出ロック
+			if(White_charge_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, White_lock_position); //射出ロック
 			
 		}
-	}else{
-		return false;
 	}
 	return false;
 
@@ -1194,8 +1200,8 @@ void injection_release(int *is_start_flag, bool Black_release_doProsess, bool Wh
 	if(Black_charge_state != 1 && White_charge_state != 1){
 		return;
 	}else{
-		if(Black_release_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, 90);  //ロック解除
-		if(White_release_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, 90);  //ロック解除
+		if(Black_release_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, Black_lock_position);  //ロック解除
+		if(White_release_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, White_lock_position);  //ロック解除
 		if(Black_release_doProsess) Black_charge_state = !Black_release_doProsess; //チャージ状況保存
 		if(White_release_doProsess) White_charge_state = !White_release_doProsess; //チャージ状況保存
 		printf("change state  release1 : %d  release2 : %d \n\r", Black_charge_state, White_charge_state);
