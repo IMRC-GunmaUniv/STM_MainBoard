@@ -410,7 +410,7 @@ int main(void)
 		}else if(is_start_drag){ //アーム箱位置
 			if(arm_drag_set(1000))	is_start_drag = 0;
 		}else if(is_start_reload_from_drag){//引きずりから自動装てん
-			if(injection_reload_from_drag(2000) ) is_start_reload_from_drag = 0;
+			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag = 0;
 		}
 
 		//射出,チャージ　処理
@@ -1275,7 +1275,7 @@ int MCU_arm_control(int command, int limitTime){
 	}
 
 	if(start_arm_control_time == 0) start_arm_control_time = HAL_GetTick();
-    if(command != arm_position && is_moving == 0){
+    if(is_moving == 0){ //command != arm_position && 
         uint8_t body[1] = {command};
         printf("send MCU arm command: %d\n\r", body[0]);
         ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 0, 1, body);
@@ -1291,7 +1291,7 @@ int MCU_arm_control(int command, int limitTime){
             printf("moving done \t current position:%d\n\r",arm_position);
             return 1;
         }else{
-            printf("moving to position %d\n\r",command);
+            //printf("moving to position %d\n\r",command);
         }
 
     }else if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time ) > limitTime)){
@@ -1355,9 +1355,12 @@ bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から�
 	static uint32_t arm_drag_set_timecount = 0;
 	static int arm_drag_set_processNo = 0;
 	
+	//printf("%d\n\r",arm_drag_set_processNo);
+
 	if(arm_drag_set_processNo == 0){//射出　→　引きずり →　キャッチ
-		if(arm_position == drag_position && catch_state == 0){
-			catch_close(1);
+		//printf("arm_position: %d  catch_state:%d  timecount:%d\n\r",arm_position,catch_state,arm_drag_set_timecount);
+		if(arm_position == drag_position){
+			catch_close(1);  
 
 			if(arm_drag_set_timecount == 0) arm_drag_set_timecount = HAL_GetTick();
 			if((HAL_GetTick() - arm_drag_set_timecount) >= catch_timeout){
@@ -1365,18 +1368,21 @@ bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から�
 				arm_drag_set_timecount = 0;
 			}
 
-		}else if(arm_position != drag_position){
-			MCU_arm_control(drag_position, 4000);
-		}else if(catch_state == 1 && arm_drag_set_timecount == 0){//閉じてしまっていたら開ける
+		}
+		if(catch_state == 1 && arm_position != drag_position){//閉じてしまっていたら開ける
 			catch_open(1);
 		}
+		if(arm_position != drag_position){
+			MCU_arm_control(drag_position, 4000);
+		}
+
 
 	}else if(arm_drag_set_processNo == 1){//→　装填
 		if(arm_position != injection_position){
 			MCU_arm_control(injection_position, 6000);
 		}
 		
-		if( Black_charge_state != 1 && White_charge_state != 1){
+		if( Black_charge_state != 1 || White_charge_state != 1){
 			charge_FLAG = 1; //チャージ開始
 		}
 
