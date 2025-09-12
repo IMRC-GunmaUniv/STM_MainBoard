@@ -79,11 +79,11 @@ void ALL_LED_OFF(void);
 void handleMovement(void);
 void inertia_injection(int);
 void injection_Init(int, TIM_HandleTypeDef *, uint32_t , TIM_HandleTypeDef *, uint32_t );
-bool injection_set(int,int);
+bool injection_set(void);
 bool injection_release(bool, bool);
 bool getBtnMultiState(const int *, uint8_t , uint32_t);
 bool injection_charge(void);
-bool arm_drag_set(int);
+int arm_drag_set(int);
 void catch_open(int);
 void catch_close(int);
 bool injection_reload_from_drag(int);
@@ -402,7 +402,7 @@ int main(void)
 			if(MCU_arm_control(aim_position, 2500))	is_start_move_to_aim_position = 0;
 			
 		}else if(is_start_injection_set){ //射出装填
-			if(injection_set(500,5000))	is_start_injection_set = 0;
+			if(injection_set())	is_start_injection_set = 0;
 			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
 
 		}else if(is_start_move_to_catch){ //アームキャッチポジ
@@ -1223,34 +1223,6 @@ bool injection_charge(void){//射出チャージ　自動
 
 }
 
-
-/*アーム周り*/
-bool injection_set(int release_timeout, int move_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
-	static uint32_t injection_set_start_time = 0;
-
-	if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
-	charge_FLAG = 1; //チャージ開始
-	if(arm_position != injection_position) MCU_arm_control(injection_position, 4500);
-
-	if(Black_charge_state == 1 && White_charge_state == 1 && arm_position == injection_position){
-		if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
-		if( (HAL_GetTick() - injection_set_start_time) >= release_timeout){
-			//catch_open(1);
-			injection_set_start_time = 0;
-
-			return true;
-		}
-		
-	}else if((HAL_GetTick()-injection_set_start_time) >move_timeout){
-		injection_set_start_time = 0;
-		printf("move_timeout\n\r");
-
-		return true;
-
-	}
-	return false;
-}
-
 bool injection_release(bool Black_release_doProsess, bool White_release_doProsess){//射出!!　
 
 	if(Black_charge_state != 1 && White_charge_state != 1){
@@ -1266,6 +1238,8 @@ bool injection_release(bool Black_release_doProsess, bool White_release_doProses
 	return 0;
 }
 
+
+/*アーム周り*/
 int MCU_arm_control(int command, int limitTime){
     static int is_moving = 0;
     static int last_arm_command = 0;
@@ -1274,17 +1248,19 @@ int MCU_arm_control(int command, int limitTime){
 	if(command != last_arm_command){
 		is_moving = 0;
 		start_arm_control_time = 0;
+		arm_position = 10;
 	}
 
-	if(start_arm_control_time == 0) start_arm_control_time = HAL_GetTick();
     if(is_moving == 0){ //command != arm_position && 
         uint8_t body[1] = {command};
         printf("send MCU arm command: %d\n\r", body[0]);
         ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 0, 1, body);
         last_arm_command = command;
         is_moving = 1;
+		start_arm_control_time = HAL_GetTick();
     }
 
+	//----
     if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time )<= limitTime)){
         if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == command){
             is_moving = 0;
@@ -1296,68 +1272,89 @@ int MCU_arm_control(int command, int limitTime){
             //printf("moving to position %d\n\r",command);
         }
 
-    }else if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time ) > limitTime)){
+    }else if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time ) > limitTime)){//timeout
 		HAL_GPIO_TogglePin(BZ_GPIO_Port, BZ_Pin);
 		is_moving = 0;
-        arm_position = 10;
+        arm_position = -10;
 		start_arm_control_time = 0;
 		printf("time out\n\r");
 		//HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,1);
 		HAL_GPIO_TogglePin(BZ_GPIO_Port, BZ_Pin);
-		return 1;
+		return 2;
 	}
     return 0;
 }
 
-bool arm_drag_set(int catch_timeout){
+bool injection_set(void){//射出にセット 自動(アーム上に移動⇒装填) //d
+	charge_FLAG = 1; //チャージ開始
+	if(arm_position != injection_position){
+		if(MCU_arm_control(injection_position, 4500)) return true;
+	} 
+
+	// if(Black_charge_state == 1 && White_charge_state == 1 && arm_position == injection_position){
+		// if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
+		// if( (HAL_GetTick() - injection_set_start_time) >= release_timeout){
+		// 	catch_open(1);
+		// 	injection_set_start_time = 0;
+
+		// 	return true;
+	// 	}else{
+	// 		return true;
+	// }
+
+	return false;
+}
+
+int arm_drag_set(int catch_maintain_time){
 	static uint32_t arm_catch_timecount = 0;
 	static int arm_drag_set_processNo = 0;
-	static int time_out_flag = 0;
+	static int move_result = 0;
 	
 	if(arm_drag_set_processNo == 0){
-		if(arm_position == drag_position || time_out_flag == 1){
+		if(arm_position == drag_position){
 			if(catch_state == 0){//もしクリーナーを持っていなかったら　下で止まる
-				time_out_flag = 0;
 				arm_drag_set_processNo = 0;
 				arm_catch_timecount  = 0;
-				return true;
+				return 1;
 			}else if(catch_state == 1){ //クリーナーを持っていたら離す
 				catch_open(0);
 				if(arm_catch_timecount == 0) arm_catch_timecount= HAL_GetTick();
-				if((HAL_GetTick() - arm_catch_timecount) >= catch_timeout){
+				if((HAL_GetTick() - arm_catch_timecount) >= catch_maintain_time){
 					catch_state = 0;
 					arm_drag_set_processNo = 1;
+					move_result = 0;
 				}
 			}
-			printf("timeout in\n\r");
-			
-			
 		}else{
-			MCU_arm_control(drag_position, 4000);
-			if(arm_position == 10) time_out_flag = 1;
-			
+			move_result = MCU_arm_control(drag_position, 4000);
+			if(move_result == 2){
+				arm_drag_set_processNo = 0;
+				arm_catch_timecount  = 0;
+				move_result = 0;
+				return 2; //timeout
+			} 
 		}
 
 	}else if(arm_drag_set_processNo == 1){
 		if(arm_position == aim_position){
 			arm_drag_set_processNo = 0;
 			arm_catch_timecount  = 0;
-			time_out_flag = 0;
-			return true;
-
+			return 1;
 		}else{
-			MCU_arm_control(aim_position, 3000);
+			int move_result = MCU_arm_control(aim_position, 3000);
+			if(move_result == 2){
+				arm_drag_set_processNo = 0;
+				arm_catch_timecount  = 0;
+				move_result = 0;
+				return 2; //timeout
+			} 
 		}
-
 	}
 
-	return false;
-	
-
-
+	return 0;
 }
 
-bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から自動装てん
+bool injection_reload_from_drag(int catch_maintain_time){ //引きずり機構から自動装てん
 	static uint32_t arm_drag_set_timecount = 0;
 	static int arm_drag_set_processNo = 0;
 	
@@ -1369,7 +1366,7 @@ bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から�
 			catch_close(1);  
 
 			if(arm_drag_set_timecount == 0) arm_drag_set_timecount = HAL_GetTick();
-			if((HAL_GetTick() - arm_drag_set_timecount) >= catch_timeout){
+			if((HAL_GetTick() - arm_drag_set_timecount) >= catch_maintain_time){
 				arm_drag_set_processNo = 1;
 				arm_drag_set_timecount = 0;
 			}
@@ -1381,7 +1378,6 @@ bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から�
 		if(arm_position != drag_position){
 			MCU_arm_control(drag_position, 4000);
 		}
-
 
 	}else if(arm_drag_set_processNo == 1){//→　装填
 		if(arm_position != injection_position){
