@@ -329,8 +329,7 @@ int main(void)
 	int LED_state = 0;
 
 	while(1){
-		connection_monitoring(1700); //各ユニットとの接続確認    
-		//PCU_survival_signal(200);  //PCUに生存信号送信 
+		connection_monitoring(1700); //各ユニットとの接続確認
 
 		//ボタン指定
 		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW4_GPIO_Port, SW4_Pin); //カブトムシ装填
@@ -356,10 +355,12 @@ int main(void)
 		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 800);
 		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 100);
 
+
 		//---コントローラーのボタン処理---
 		allBtnAxiState(); //ボタンの状態を更新
 		handleMovement(); //移動（左右スティック） R1で速度を遅くする
 
+		/*-----------フラグ-----------*/
 		//アーム　フラグ建築
 		if(send_caliblation_BTN){ 
 			is_start_reset();
@@ -381,6 +382,17 @@ int main(void)
 			is_start_move_to_aim_position = 1;
 		} 
 		
+		//射出　フラグ
+		if(ALL_injection_BTN){
+			is_start_all_injection = 1;
+		}else if(White_injection_release_BTN){
+			is_start_White_injection = 1;
+		}else if(Black_injection_release_BTN){
+			is_start_Black_injection = 1;
+		}
+
+
+		/*-----------処理-----------*/
 		//アーム　処理
 		if(is_start_calibration){ //キャリブレーション送信
 			if(send_calibration_signal())	is_start_calibration = 0;
@@ -397,31 +409,19 @@ int main(void)
 
 		}else if(is_start_drag){ //アーム箱位置
 			if(arm_drag_set(1000))	is_start_drag = 0;
-		}else if(is_start_reload_from_drag){
+		}else if(is_start_reload_from_drag){//引きずりから自動装てん
 			if(injection_reload_from_drag(2000) ) is_start_reload_from_drag = 0;
 		}
 
-
-		//射出　フラグ
-		if(ALL_injection_BTN){
-			is_start_all_injection = 1;
-		}else if(White_injection_release_BTN){
-			is_start_White_injection = 1;
-		}else if(Black_injection_release_BTN){
-			is_start_Black_injection = 1;
-		}
-
-		//射出　処理
-		if(is_start_all_injection){ //二つのボタン、両射出 ok
-			if(injection_release(1, 1)) is_start_all_injection = 0;
-		}else if(is_start_White_injection){//白射出 ok
-			if(injection_release(0, 1)) is_start_White_injection = 0;
-		}else if(is_start_Black_injection){//黒射出 ok
-			if(injection_release(1, 0)) is_start_Black_injection = 0;
-		}
-
+		//射出,チャージ　処理
 		if(charge_FLAG){
 			if(injection_charge()) charge_FLAG = 0; 
+		}else if(is_start_all_injection){ //二つのボタン、両射出
+			if(injection_release(1, 1)) is_start_all_injection = 0;
+		}else if(is_start_White_injection){//白射出
+			if(injection_release(0, 1)) is_start_White_injection = 0;
+		}else if(is_start_Black_injection){//黒射出
+			if(injection_release(1, 0)) is_start_Black_injection = 0;
 		}
 
 
@@ -440,9 +440,7 @@ int main(void)
 			}
 			Last_reverse_state = move_reverse_BTN;
 		}
-		
 		if(reverse == 1) RU_Toggle_relay(&hcan1, 1, LED_relay_port,1000,300);
-
 
 		if(LED_BTN != last_LED_state){ //昆虫図鑑完成
 			if (LED_BTN) {
@@ -1064,7 +1062,7 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 			HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_SET);
 			HAL_Delay(150);
 			HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_RESET);
-			ALL_LED_OFF();
+			//ALL_LED_OFF();
 
 		}else{
 			connection_state[i] = 1;
@@ -1093,7 +1091,7 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 
 
 /*移動*/
-void handleMovement(void){//移動　スティッアーム
+void handleMovement(void){//移動　スティック
 	int DIR = 0; //移動方向
 	int spead = 0; //速度
 	static int slow_move = 0;
@@ -1275,9 +1273,9 @@ int MCU_arm_control(int command, int limitTime){
 		is_moving = 0;
 		start_arm_control_time = 0;
 	}
-	
+
 	if(start_arm_control_time == 0) start_arm_control_time = HAL_GetTick();
-    if(command != last_arm_command && is_moving == 0){
+    if(command != arm_position && is_moving == 0){
         uint8_t body[1] = {command};
         printf("send MCU arm command: %d\n\r", body[0]);
         ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 0, 1, body);
