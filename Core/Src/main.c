@@ -80,7 +80,7 @@ void handleMovement(void);
 void inertia_injection(int);
 void injection_Init(int, TIM_HandleTypeDef *, uint32_t , int, TIM_HandleTypeDef *, uint32_t );
 bool injection_set(int,int);
-void injection_release(int *, bool, bool);
+bool injection_release(bool, bool);
 bool getBtnMultiState(const int *, uint8_t , uint32_t);
 bool injection_charge(bool , bool );
 bool arm_drag_set(int);
@@ -110,7 +110,9 @@ int is_start_drag = 0;
 int is_start_beetle_set = 0;
 int is_start_reload_from_drag = 0;
 int is_start_move_to_catch = 0;
-
+int is_start_all_injection = 0;
+int is_start_Black_injection = 0;
+int is_start_White_injection = 0;
 
 int reverse = 0; // 0:通常, 1:反転
 int inertia_flag = 0;
@@ -321,7 +323,6 @@ int main(void)
 	PCU_voltage_recovery(); //PCUの電圧を復帰
 
 	//ローカル変数
-
 	int Last_reverse_state = 0; 
 	int last_LED_state = 0;
 	int LED_state = 0;
@@ -351,18 +352,18 @@ int main(void)
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
 		//R1は速度を30に設定（handleMovement内）
 
-		//see_MCU2_data();
-
+		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 800);
+		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 100);
 
 		//---コントローラーのボタン処理---
 		allBtnAxiState(); //ボタンの状態を更新
 		handleMovement(); //移動（左右スティック） R1で速度を遅くする
 
-		//フラグ建築職人一級
+		//アーム　フラグ建築
 		if(is_start_injection_set){//射出セット中は何も受けつけない
-			;
 
-		}else if(getBtnMultiState(send_calibration_BTN, 2, 800)){ 
+
+		}else if(send_caliblation_BTN){ 
 			is_start_reset();
 			is_start_calibration = 1;
 		}else if(reload_from_drag_BTN){
@@ -382,7 +383,7 @@ int main(void)
 			is_start_move_to_aim_position = 1;
 		} 
 		
-
+		//アーム　処理
 		if(is_start_calibration){ //キャリブレーション送信
 			if(send_calibration_signal())	is_start_calibration = 0;
 
@@ -390,7 +391,7 @@ int main(void)
 			if(MCU_arm_control(aim_position, 4000))	is_start_move_to_aim_position = 0;
 			
 		}else if(is_start_injection_set == 1){ //射出装填
-			if(injection_set(500,7000))	is_start_injection_set = 0;
+			if(injection_set(500,10))	is_start_injection_set = 0;
 			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
 
 		}else if(is_start_move_to_catch){ //アームキャッチポジ
@@ -398,24 +399,29 @@ int main(void)
 
 		}else if(is_start_drag){ //アーム箱位置
 			if(arm_drag_set(1000))	is_start_drag = 0;
-
-		} 
-
-
-		//射出関連
-
-		if(is_start_reload_from_drag) {
+		}else if(is_start_reload_from_drag){
 			if(injection_reload_from_drag(2000) ) is_start_reload_from_drag = 0;
-
 		}
 
-		if(getBtnMultiState(ALL_injection_buttons, 2, 70)){ //二つのボタン、両射出 ok
-			injection_release(&ALL_injection_buttons, 1, 1);
-		}else if(White_injection_release_BTN){//白射出 ok
-			injection_release(&White_injection_release_BTN, 0, 1);
-		}else if(Black_injection_release_BTN){//黒射出 ok
-			injection_release(&Black_injection_release_BTN, 1, 0);
+
+		//射出　フラグ
+		if(ALL_injection_BTN){
+			is_start_all_injection = 1;
+		}else if(White_injection_release_BTN){
+			is_start_White_injection = 1;
+		}else if(Black_injection_release_BTN){
+			is_start_Black_injection = 1;
 		}
+
+		//射出　処理
+		if(is_start_all_injection){ //二つのボタン、両射出 ok
+			if(injection_release(1, 1)) is_start_all_injection = 0;
+		}else if(is_start_White_injection){//白射出 ok
+			if(injection_release(0, 1)) is_start_White_injection = 0;
+		}else if(is_start_Black_injection){//黒射出 ok
+			if(injection_release(1, 0)) is_start_Black_injection = 0;
+		}
+
 
 		//つかむ機構
 		if(catch_open_BTN){//つかむアーム開 ok
@@ -926,6 +932,37 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+
+/*その他*/
+void ALL_LED_OFF(void){//全LED消灯
+	HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_RESET);
+	HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_RESET);
+}
+
+void is_start_reset(void){
+	is_start_calibration = 0;
+	is_start_reload_from_drag = 0;
+	is_start_injection_set = 0;
+	is_start_move_to_catch = 0;
+	is_start_drag = 0;
+	is_start_move_to_aim_position = 0;
+}
+
+void BZ_ON(int On_Time){
+	static uint32_t BZ_Start_time = 0;
+	if(BZ_Start_time == 0) BZ_Start_time = HAL_GetTick();
+	if(HAL_GetTick()-BZ_Start_time <= On_Time ){
+		HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, 1);
+	}else{
+		HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, 0);
+		BZ_Start_time = 0;
+	}
+}
+
+
+/*接続確認*/
 int device_list[5] = {0, 0, 0, 0, 0}; // 接続中のデバイス配列｛WCD,　PCU,　MCU1, MCU2,　RU｝　0:未接続　1:接続中
 char *device_name[5] = {"WCD", "PCU", "MCU1", "MCU2", "RU"};
 void  unit_check(int wait_time){//接続中のユニットを探す
@@ -1052,13 +1089,8 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 
 }
 
-void ALL_LED_OFF(void){//全LED消灯
-	HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(LED2_GPIO_Port,LED2_Pin,GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(LED3_GPIO_Port,LED3_Pin,GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(LED4_GPIO_Port,LED4_Pin,GPIO_PIN_RESET);
-}
 
+/*移動*/
 void handleMovement(void){//移動　スティッアーム
 	int DIR = 0; //移動方向
 	int spead = 0; //速度
@@ -1121,6 +1153,8 @@ void handleMovement(void){//移動　スティッアーム
 	MCU_move(DIR, spead, reverse,slow_move); //MCUに移動命令
 }
 
+
+/*射出関係*/
 void inertia_injection(int relay_NO){//慣性射出
 	if (inertia_start_time == 0) {
 		inertia_start_time = HAL_GetTick();
@@ -1182,6 +1216,8 @@ bool injection_charge(bool Black_charge_doProsess, bool White_charge_doProsess){
 
 }
 
+
+/*アーム周り*/
 bool injection_set(int release_timeout, int move_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
 	static uint32_t injection_set_start_time = 0;
 	printf("injection_set in\n\r");
@@ -1207,30 +1243,19 @@ bool injection_set(int release_timeout, int move_timeout){//射出にセット �
 	return false;
 }
 
-void injection_release(int *is_start_flag, bool Black_release_doProsess, bool White_release_doProsess){//射出!!　
-	*is_start_flag = 0;
+bool injection_release(bool Black_release_doProsess, bool White_release_doProsess){//射出!!　
+
 	if(Black_charge_state != 1 && White_charge_state != 1){
-		return;
+		return 1;
 	}else{
 		if(Black_release_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, Black_initial_position);  //ロック解除
 		if(White_release_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, White_initial_position);  //ロック解除
 		if(Black_release_doProsess) Black_charge_state = !Black_release_doProsess; //チャージ状況保存
 		if(White_release_doProsess) White_charge_state = !White_release_doProsess; //チャージ状況保存
 		printf("change state  release1 : %d  release2 : %d \n\r", Black_charge_state, White_charge_state);
-		return;
+		return 1;
 	}  
-}
-
-void catch_open(int autoUpdate){
-	RU_control(&hcan1, 1, catch_relay_port, 0);
-	if(autoUpdate) catch_state = 0;
-	return;
-}
-
-void catch_close(int autoUpdate){
-	RU_control(&hcan1, 1, catch_relay_port, 1);
-	if(autoUpdate) catch_state = 1;
-	return;
+	return 0;
 }
 
 int MCU_arm_control(int command, int limitTime){
@@ -1249,7 +1274,7 @@ int MCU_arm_control(int command, int limitTime){
         is_moving = 1;
     }
 
-    if(((HAL_GetTick() - start_arm_control_time )<= limitTime) && is_moving == 1 ){
+    if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time )<= limitTime)){
         if(data_type_MCU2[0] == 3 && data_type_MCU2[1] == 1 && data_MCU2[1] == command){
             is_moving = 0;
             arm_position = command;
@@ -1260,7 +1285,8 @@ int MCU_arm_control(int command, int limitTime){
             printf("moving to position %d\n\r",command);
         }
 
-    }else if(((HAL_GetTick() - start_arm_control_time ) > limitTime) && is_moving == 1 ){
+    }else if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time ) > limitTime)){
+		BZ_ON(300);
 		is_moving = 0;
         arm_position = 10;
 		start_arm_control_time = 0;
@@ -1367,14 +1393,20 @@ int send_calibration_signal(void){
 	return 1;
 }
 
-void is_start_reset(void){
-	is_start_calibration = 0;
-	is_start_reload_from_drag = 0;
-	is_start_injection_set = 0;
-	is_start_move_to_catch = 0;
-	is_start_drag = 0;
-	is_start_move_to_aim_position = 0;
+
+/*つかむ機構*/
+void catch_open(int autoUpdate){
+	RU_control(&hcan1, 1, catch_relay_port, 0);
+	if(autoUpdate) catch_state = 0;
+	return;
 }
+
+void catch_close(int autoUpdate){
+	RU_control(&hcan1, 1, catch_relay_port, 1);
+	if(autoUpdate) catch_state = 1;
+	return;
+}
+
 
 
 //ライブラリに入れたいなーーー
