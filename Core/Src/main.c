@@ -340,7 +340,8 @@ int main(void)
 		int arm_move_to_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
 		int arm_move_to_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
 
-		int reload_from_drag_BTN = getBtnState(BTN_UP); //自動装填   
+		//int reload_from_drag_BTN = getBtnState(BTN_UP); //自動装填
+		int reload_from_drag_BTN = 0; //自動装填   
 		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
 		int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
 		
@@ -353,7 +354,7 @@ int main(void)
 		//R1は速度を30に設定（handleMovement内）
 
 		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 800);
-		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 100);
+		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 50);
 
 
 		//---コントローラーのボタン処理---
@@ -398,19 +399,20 @@ int main(void)
 			if(send_calibration_signal())	is_start_calibration = 0;
 
 		}else if(is_start_move_to_aim_position){  //箱狙う位置　ok
-			if(MCU_arm_control(aim_position, 4000))	is_start_move_to_aim_position = 0;
+			if(MCU_arm_control(aim_position, 2500))	is_start_move_to_aim_position = 0;
 			
-		}else if(is_start_injection_set == 1){ //射出装填
+		}else if(is_start_injection_set){ //射出装填
 			if(injection_set(500,5000))	is_start_injection_set = 0;
 			//if(is_start_injection_set) injection_charge(1, 1); //(チャージのみ)
 
 		}else if(is_start_move_to_catch){ //アームキャッチポジ
-			if(MCU_arm_control(catch_position, 4000)) is_start_move_to_catch = 0; //とる位置まで移動　ok
+			if(MCU_arm_control(catch_position, 2500)) is_start_move_to_catch = 0; //とる位置まで移動　ok
 
 		}else if(is_start_drag){ //アーム箱位置
 			if(arm_drag_set(1000))	is_start_drag = 0;
 		}else if(is_start_reload_from_drag){//引きずりから自動装てん
 			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag = 0;
+			printf("a\n\r");
 		}
 
 		//射出,チャージ　処理
@@ -1043,12 +1045,12 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 					break;
 				case 2: //MCU1
 					printf("MCU1 is disconnected\n\r");
-					HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+					HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET); //led3
 					connection_state[2] = 0;  
 					break;
 				case 3: //MCU2
 					printf("MCU2 is disconnected\n\r");
-					HAL_GPIO_WritePin(LED3_GPIO_Port, LED3_Pin, GPIO_PIN_SET);
+					HAL_GPIO_WritePin(CAN_LED1_GPIO_Port, CAN_LED1_Pin, GPIO_PIN_SET); //led3
 					connection_state[3] = 0;  
 					break;
 				case 4: //RU
@@ -1201,14 +1203,14 @@ bool injection_charge(void){//射出チャージ　自動
  
 		//--射出機構　チャージ--
 		uint32_t check_time = HAL_GetTick() - injection_start_time;
-		if(check_time >=2500){//3
+		if(check_time >=2000){//3  2500
 			RU_control(&hcan1, 1, charge_valve, 0);			
 			Black_charge_state = Black_charge_doProsess; //チャージ状況保存
 			White_charge_state = White_charge_doProsess; 
 			injection_start_time = 0;
 			return true; //装填プログラム実装でき次第削除
 
-		}else if(check_time >=1500){//2
+		}else if(check_time >=1200){//2  1500
 			if(Black_charge_doProsess) LD_220MG_SetAngle(Black_lock_Servo_HT,  Black_lock_Servo_CN, Black_lock_position); //射出ロック
 			if(White_charge_doProsess) LD_220MG_SetAngle(White_lock_Servo_HT,  White_lock_Servo_CN, White_lock_position); 
 
@@ -1233,7 +1235,7 @@ bool injection_set(int release_timeout, int move_timeout){//射出にセット �
 	if(Black_charge_state == 1 && White_charge_state == 1 && arm_position == injection_position){
 		if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
 		if( (HAL_GetTick() - injection_set_start_time) >= release_timeout){
-			catch_open(1);
+			//catch_open(1);
 			injection_set_start_time = 0;
 
 			return true;
@@ -1300,7 +1302,7 @@ int MCU_arm_control(int command, int limitTime){
         arm_position = 10;
 		start_arm_control_time = 0;
 		printf("time out\n\r");
-		HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,1);
+		//HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,1);
 		HAL_GPIO_TogglePin(BZ_GPIO_Port, BZ_Pin);
 		return 1;
 	}
@@ -1310,10 +1312,12 @@ int MCU_arm_control(int command, int limitTime){
 bool arm_drag_set(int catch_timeout){
 	static uint32_t arm_catch_timecount = 0;
 	static int arm_drag_set_processNo = 0;
+	static int time_out_flag = 0;
 	
 	if(arm_drag_set_processNo == 0){
-		if(arm_position == drag_position){
+		if(arm_position == drag_position || time_out_flag == 1){
 			if(catch_state == 0){//もしクリーナーを持っていなかったら　下で止まる
+				time_out_flag = 0;
 				arm_drag_set_processNo = 0;
 				arm_catch_timecount  = 0;
 				return true;
@@ -1324,12 +1328,13 @@ bool arm_drag_set(int catch_timeout){
 					catch_state = 0;
 					arm_drag_set_processNo = 1;
 				}
-			
 			}
+			printf("timeout in\n\r");
 			
 			
 		}else{
 			MCU_arm_control(drag_position, 4000);
+			if(arm_position == 10) time_out_flag = 1;
 			
 		}
 
@@ -1337,10 +1342,11 @@ bool arm_drag_set(int catch_timeout){
 		if(arm_position == aim_position){
 			arm_drag_set_processNo = 0;
 			arm_catch_timecount  = 0;
+			time_out_flag = 0;
 			return true;
 
 		}else{
-			MCU_arm_control(aim_position, 4000);
+			MCU_arm_control(aim_position, 3000);
 		}
 
 	}
@@ -1391,11 +1397,10 @@ bool injection_reload_from_drag(int catch_timeout){ //引きずり機構から�
 
 			arm_drag_set_processNo = 0;
 			arm_drag_set_timecount  = 0;
+			printf("END\n\r");
 			return true;
 
 		}
-
-
 	}
 
 	return false;
