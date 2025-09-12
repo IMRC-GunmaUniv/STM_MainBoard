@@ -1220,7 +1220,6 @@ bool injection_charge(bool Black_charge_doProsess, bool White_charge_doProsess){
 /*アーム周り*/
 bool injection_set(int release_timeout, int move_timeout){//射出にセット 自動(アーム上に移動⇒装填) //d
 	static uint32_t injection_set_start_time = 0;
-	printf("injection_set in\n\r");
 
 	if(injection_set_start_time == 0) injection_set_start_time = HAL_GetTick();
 	injection_charge(!Black_charge_state, !White_charge_state);
@@ -1238,6 +1237,7 @@ bool injection_set(int release_timeout, int move_timeout){//射出にセット �
 	}else if((HAL_GetTick()-injection_set_start_time) >move_timeout){
 		injection_set_start_time = 0;
 		printf("move_timeout\n\r");
+		return true;
 
 	}
 	return false;
@@ -1286,12 +1286,13 @@ int MCU_arm_control(int command, int limitTime){
         }
 
     }else if(is_moving == 1 && ((HAL_GetTick() - start_arm_control_time ) > limitTime)){
-		BZ_ON(300);
+		HAL_GPIO_TogglePin(BZ_GPIO_Port, BZ_Pin);
 		is_moving = 0;
         arm_position = 10;
 		start_arm_control_time = 0;
 		printf("time out\n\r");
 		HAL_GPIO_WritePin(LED1_GPIO_Port,LED1_Pin,1);
+		HAL_GPIO_TogglePin(BZ_GPIO_Port, BZ_Pin);
 		return 1;
 	}
     return 0;
