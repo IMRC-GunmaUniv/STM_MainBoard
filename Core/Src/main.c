@@ -59,7 +59,14 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+typedef struct {//長押し用構造体
+    uint32_t press_start_time;
+    int is_pressed;
+    int BTN_state;
+} ButtonHandle;
 
+ButtonHandle Black_injection_release_BTN = {0, 0, 0};
+ButtonHandle White_injection_release_BTN = {0, 0, 0};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,6 +98,7 @@ int MCU_arm_control(int, int);
 int send_calibration_signal(void);
 void injection_FLAG_reset(void);
 void arm_FLAG_reset(void);
+bool getBtnHoldState(ButtonHandle *, uint32_t);
 
 
 /* USER CODE END PFP */
@@ -119,6 +127,8 @@ int charge_FLAG = 0;
 
 int last_arm_command = 0;
 int  running_arm_command = 0;
+
+
 
 
 int reverse = 0; // 0:通常, 1:反転
@@ -351,8 +361,8 @@ int main(void)
 		int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
 		
 		int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1}; //全射出
-		int Black_injection_release_BTN = getBtnState(BTN_RIGHT); //黒い射出、射出
-		int White_injection_release_BTN = getBtnState(BTN_L1); //白い射出、射出
+		//int Black_injection_release_BTN = is_button_held(,100); //黒い射出、射出
+		//int White_injection_release_BTN = getBtnState(BTN_L1); //白い射出、射出
 
 		int catch_open_BTN = getBtnState(BTN_L2); //つかむ機構　開
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
@@ -361,8 +371,10 @@ int main(void)
 		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 30);
 		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 100);
 
+
 		//printf("curent position: %d\n\r",arm_position);
 		//printf("change state  release1 : %d  release2 : %d \n\r", Black_charge_state, White_charge_state);
+
 
 
 
@@ -393,6 +405,12 @@ int main(void)
 		} 
 
 
+		//ButtonHandle btnA = {0, 0, getBtnState(BTN_RIGHT)};
+		//ButtonHandle btnB = {0, 0, getBtnState(BTN_R1)};
+
+		White_injection_release_BTN.BTN_state = getBtnState(BTN_RIGHT);
+		Black_injection_release_BTN.BTN_state = getBtnState(BTN_L1);
+		
 	
 		//射出　フラグ
 		if(ALL_injection_BTN && charge_FLAG == 0){
@@ -400,12 +418,12 @@ int main(void)
 			
 
 			is_start_all_injection = 1;
-		}else if(White_injection_release_BTN && charge_FLAG == 0){
+		}else if(getBtnHoldState(&White_injection_release_BTN, 30) && charge_FLAG == 0){
 			injection_FLAG_reset();
 
 
 			is_start_White_injection = 1;
-		}else if(Black_injection_release_BTN && charge_FLAG == 0){
+		}else if(getBtnHoldState(&Black_injection_release_BTN, 30) && charge_FLAG == 0){
 			injection_FLAG_reset();
 			
 
@@ -1127,7 +1145,6 @@ void connection_monitoring(float CHECK_INTERVAL) {//各ユニットとの接続�
 
 }
 
-
 /*移動*/
 void handleMovement(void){//移動　スティック
 	int DIR = 0; //移動方向
@@ -1490,8 +1507,6 @@ void catch_close(int autoUpdate){
 	return;
 }
 
-
-
 //ライブラリに入れたいなーーー
 #define MAX_BUTTONS 16 
 static uint32_t lastPressTime[MAX_BUTTONS] = {0};
@@ -1530,6 +1545,24 @@ bool getBtnMultiState(const int *buttons, uint8_t numButtons, uint32_t threshold
 	return 0;
 }
 
+bool getBtnHoldState(ButtonHandle *btn, uint32_t HOLD_TIME) {
+    if (btn->BTN_state) {  // 押されている間は1
+        if (!btn->is_pressed) {
+            // 押し始めた瞬間
+            btn->press_start_time = HAL_GetTick();
+            btn->is_pressed = 1;
+        } else {
+            // 押し続けている → 経過時間チェック
+            if ((HAL_GetTick() - btn->press_start_time) >= HOLD_TIME) {
+                return true;  // HOLD_TIME以上押された！
+            }
+        }
+    } else {
+        // 離されたらリセット
+        btn->is_pressed = 0;
+    }
+    return false;
+}
 
 /* USER CODE END 4 */
 
