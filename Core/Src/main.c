@@ -357,6 +357,7 @@ int main(void)
 
 		//int reload_from_drag_BTN = getBtnState(BTN_UP); //自動装填
 		int reload_from_drag_BTN = 0; //自動装填   
+		int charge_BTN = getBtnState(BTN_UP);
 		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
 		int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
 		
@@ -370,6 +371,11 @@ int main(void)
 
 		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 30);
 		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 100);
+
+
+		White_injection_release_BTN.BTN_state = getBtnState(BTN_L1);
+		Black_injection_release_BTN.BTN_state = getBtnState(BTN_RIGHT);
+		
 
 
 		//printf("curent position: %d\n\r",arm_position);
@@ -402,15 +408,8 @@ int main(void)
 		}else if(arm_move_to_aim_position_BTN){
 			arm_FLAG_reset();
 			is_start_move_to_aim_position = 1;
-		} 
+		}
 
-
-		//ButtonHandle btnA = {0, 0, getBtnState(BTN_RIGHT)};
-		//ButtonHandle btnB = {0, 0, getBtnState(BTN_R1)};
-
-		White_injection_release_BTN.BTN_state = getBtnState(BTN_RIGHT);
-		Black_injection_release_BTN.BTN_state = getBtnState(BTN_L1);
-		
 	
 		//射出　フラグ
 		if(ALL_injection_BTN && charge_FLAG == 0){
@@ -418,12 +417,12 @@ int main(void)
 			
 
 			is_start_all_injection = 1;
-		}else if(getBtnHoldState(&White_injection_release_BTN, 30) && charge_FLAG == 0){
+		}else if(getBtnHoldState(&White_injection_release_BTN, 50) && charge_FLAG == 0){
 			injection_FLAG_reset();
 
 
 			is_start_White_injection = 1;
-		}else if(getBtnHoldState(&Black_injection_release_BTN, 30) && charge_FLAG == 0){
+		}else if(getBtnHoldState(&Black_injection_release_BTN, 50) && charge_FLAG == 0){
 			injection_FLAG_reset();
 			
 
@@ -431,6 +430,10 @@ int main(void)
 		}else{
 			injection_FLAG_reset();
 
+		}
+
+		if(charge_BTN){
+			charge_FLAG = 1;
 		}
 
 
