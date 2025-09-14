@@ -156,7 +156,16 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 static uint32_t Rx1_unit_code,Rx1_unit_id;
 static CAN_RxHeaderTypeDef RxHeader1;
 static uint8_t RxData1[8];
-static uint32_t id;
+static uint32_t id1;
+uint32_t Rx1_index = 0;
+uint32_t Rx1_entry = 0;
+static uint32_t Rx2_unit_code,Rx2_unit_id;
+static CAN_RxHeaderTypeDef RxHeader2;
+static uint8_t RxData2[8];
+static uint32_t id2;
+uint32_t Rx2_index = 0;
+uint32_t Rx2_entry = 0;
+
 static uint8_t data_ESP[8]; //ESPからのデータ
 static uint8_t data_PCU[8];
 static uint8_t data_MCU1[8];
@@ -168,12 +177,11 @@ uint8_t data_type_MCU1[2];//足回り [index, entry]
 uint8_t data_type_MCU2[2];//アーム [index, entry]
 uint8_t data_type_RU[2];
 float connection_time[]={0,0,0,0,0}; //接続確認用　｛WCD,　PCU,　MCU1, MCU2,　RU｝
-uint32_t Rx1_index = 0;
-uint32_t Rx1_entry = 0;
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り込み
-	if (HAL_CAN_GetRxMessage(hcan1, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
-		id = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
-		ecan_addrConvertToCodeId(id, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
+
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){   //CAN割り込み
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
+		id1 = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
+		ecan_addrConvertToCodeId(id1, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
 		ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
 		
 		if(Rx1_unit_code==17 && Rx1_unit_id==1){ //WCD
@@ -221,9 +229,30 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan1){   //CAN割り�
 	}
 }
 
+void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader2, RxData2) == HAL_OK){
+		id2 = (RxHeader2.IDE == CAN_ID_STD)? RxHeader2.StdId : RxHeader2.ExtId;  
+		ecan_addrConvertToCodeId(id2, &Rx2_unit_code, &Rx2_unit_id, 0);  //unit_code,unit_id 判定
+		ecan_headerConvertToIdxEntry(RxData2[0], &Rx2_index, &Rx2_entry);
+		
+		if(Rx2_unit_code==18 && Rx2_unit_id==1){//PCU
+			connection_time[1] = HAL_GetTick();
+			for (int i = 1; i < 8; i++){
+				data_PCU[i] = RxData2[i];
+			}
+			data_type_PCU[0] = Rx2_index;
+			data_type_PCU[1] = Rx2_entry;
+
+		}
+		printf("2");
+	}
+	
+
+}
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){//タイマー割り込み　生存信号
 	if (htim->Instance == TIM5){
-        ecan_sendEmptyPacketMtoU(&hcan1, 18, 1, 0, 5);
+        ecan_sendEmptyPacketMtoU(&hcan2, 18, 1, 0, 5);
     }
 }
 
@@ -299,10 +328,12 @@ int main(void)
 	
 	//CAN Setting
 	ecan_init(1, 1); //MainBoard
-	ecan_setAllPassFilter(&hcan1);
-	//ecan_setAllPassFilter(&hcan2);
-	ecan_start(&hcan1);
-	//ecan_start(&hcan2);
+
+	ecan_setAllPassFilter_advance(&hcan1, CAN_FILTER_FIFO0, 0, 14);
+	ecan_start_advance(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
+	
+	ecan_setAllPassFilter_advance(&hcan2, CAN_FILTER_FIFO1, 14, 14);
+  	ecan_start_advance(&hcan2, CAN_IT_RX_FIFO1_MSG_PENDING);
 
 	//MCU
 	MCU_move_Init(&hcan1, 1, 100); 
@@ -312,7 +343,7 @@ int main(void)
 	canCtrlConv_Init(100, 10);
 
 	//PCU
-	PCU_Init(&hcan1, 1);
+	PCU_Init(&hcan2, 1);
 	
 	//PWM
 	// HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1); //未使用

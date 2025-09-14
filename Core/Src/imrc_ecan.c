@@ -2,58 +2,13 @@
 #include "stm32f4xx_hal.h"
 #include <string.h>
 
-// IMRC ECAN(Ethernet CAN) Module
-// Version 2.2
+// IMRC ECAN(Ethernet CAN) Library
+// Version 2.5
 
 int my_unit_code = 0;
 int my_unit_id = 0;
 
-void ecan_pushFloatToPayload(uint8_t pl[], float fl, int idx){
-    if(fl < 0){
-        fl *= -1;
-    }
 
-    int num = (int)fl;
-    int dec = (int) ((fl - (float)num) * 100 + 0.5f);
-
-    pl[idx] = (uint8_t)num;
-    pl[idx + 1] = (uint8_t)dec;
-}
-
-float ecan_parseFloatFromPayload(uint8_t pl[], int idx) {
-    return (float)pl[idx] + ((float)pl[idx + 1]) / 100.0f;
-}
-
-uint32_t ecan_codeIdConvertToAddr(int unit_code, int unit_id, int isSendfromMain)
-{
-    uint32_t addr = 0;
-    addr += unit_code << 5;
-    addr += unit_id << 1;
-    addr += isSendfromMain;
-
-    return addr;
-}
-
-void ecan_addrConvertToCodeId(uint32_t addr, uint32_t *unit_code_ptr, uint32_t *unit_id_ptr, uint32_t *isSendFromMain_ptr)
-{
-    *unit_code_ptr = (addr & 0x7E0) >> 5;
-    *unit_id_ptr = (addr & 0x1E) >> 1;
-    *isSendFromMain_ptr = addr & 0x001;
-}
-
-void ecan_headerConvertToIdxEntry(uint8_t payload_header, uint32_t *payload_index_ptr, uint32_t *payload_entry_ptr)
-{
-    *payload_index_ptr = (payload_header >> 5) & 0x07;
-    *payload_entry_ptr = payload_header & 0x1F;
-}
-
-uint8_t ecan_idxEntryConvertToHeader(uint32_t payload_index, uint32_t payload_entry)
-{
-    uint8_t left = (payload_index & 0x07) << 5;
-    uint8_t right = payload_entry & 0x1F;
-
-    return (left | right);
-}
 
 int ecan_init(int unit_code, int unit_id)
 {
@@ -78,13 +33,17 @@ int ecan_init(int unit_code, int unit_id)
     return 0;
 }
 
-void ecan_setFilter(CAN_HandleTypeDef *ptr_hcan)
+void ecan_setFilter(CAN_HandleTypeDef *ptr_hcan){
+    ecan_setFilter_advance(ptr_hcan, CAN_FILTER_FIFO0, 0, 14);
+}
+
+void ecan_setFilter_advance(CAN_HandleTypeDef *ptr_hcan, uint32_t filterFIFOAssignment, uint32_t filterBank, uint32_t slaveStartFilterBank)
 {
     CAN_FilterTypeDef filter;
 
-    uint32_t fId1 = ecan_codeIdConvertToAddr(0, 0, 1) << 5;               // フィルターID1 Mainからの全ユニットブロキャス
+    uint32_t fId1 = ecan_codeIdConvertToAddr(0, 0, 1) << 5;               // フィルターID1 Mainからの 全 ユニットブロキャス
     uint32_t fId2 = ecan_codeIdConvertToAddr(my_unit_code, 0, 1) << 5;       // フィルターID2 Mainからのユニットブロキャス
-    uint32_t fId3 = ecan_codeIdConvertToAddr(my_unit_code, my_unit_id, 1) << 5; // フィルターID3 Mainからのプロセス
+    uint32_t fId3 = ecan_codeIdConvertToAddr(my_unit_code, my_unit_id, 1) << 5; // フィルターID3 Mainから自分だけ宛て
     uint32_t fId4 = 0x7FF << 5;                                   // フィルターID4 使わないから0x1...1で埋める
 
     filter.FilterIdHigh = fId1;                     // フィルターID1
@@ -92,16 +51,20 @@ void ecan_setFilter(CAN_HandleTypeDef *ptr_hcan)
     filter.FilterMaskIdHigh = fId3;                 // フィルターID3
     filter.FilterMaskIdLow = fId4;                  // フィルターID4
     filter.FilterScale = CAN_FILTERSCALE_16BIT;     // 16モード
-    filter.FilterFIFOAssignment = CAN_FILTER_FIFO0; // FIFO0へ格納
-    filter.FilterBank = 0;
+    filter.FilterFIFOAssignment = filterFIFOAssignment; // FIFO0へ格納
+    filter.FilterBank = filterBank;
     filter.FilterMode = CAN_FILTERMODE_IDLIST; // IDリストモード
-    filter.SlaveStartFilterBank = 14;
+    filter.SlaveStartFilterBank = slaveStartFilterBank;
     filter.FilterActivation = ENABLE;
 
     HAL_CAN_ConfigFilter(ptr_hcan, &filter);
 }
 
-void ecan_setAllPassFilter(CAN_HandleTypeDef *ptr_hcan)
+void ecan_setAllPassFilter(CAN_HandleTypeDef *ptr_hcan){
+    ecan_setAllPassFilter_advance(ptr_hcan, CAN_FILTER_FIFO0, 0, 14);
+}
+
+void ecan_setAllPassFilter_advance(CAN_HandleTypeDef *ptr_hcan, uint32_t filterFIFOAssignment, uint32_t filterBank, uint32_t slaveStartFilterBank)
 {
     CAN_FilterTypeDef filter;
 
@@ -110,10 +73,10 @@ void ecan_setAllPassFilter(CAN_HandleTypeDef *ptr_hcan)
     filter.FilterMaskIdHigh = 0x0000;
     filter.FilterMaskIdLow = 0x0000;
     filter.FilterScale = CAN_FILTERSCALE_32BIT;
-    filter.FilterFIFOAssignment = CAN_FILTER_FIFO0;
-    filter.FilterBank = 0;
+    filter.FilterFIFOAssignment = filterFIFOAssignment;
+    filter.FilterBank = filterBank;
     filter.FilterMode = CAN_FILTERMODE_IDMASK;
-    filter.SlaveStartFilterBank = 14;
+    filter.SlaveStartFilterBank = slaveStartFilterBank;
     filter.FilterActivation = ENABLE;
 
     HAL_CAN_ConfigFilter(ptr_hcan, &filter);
@@ -121,9 +84,25 @@ void ecan_setAllPassFilter(CAN_HandleTypeDef *ptr_hcan)
 
 void ecan_start(CAN_HandleTypeDef *ptr_hcan)
 {
-    HAL_CAN_Start(ptr_hcan);
-    HAL_CAN_ActivateNotification(ptr_hcan, CAN_IT_RX_FIFO0_MSG_PENDING); // 受信割り込み有効化
+    ecan_start_advance(ptr_hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
 }
+
+void ecan_start_advance(CAN_HandleTypeDef *ptr_hcan, uint32_t activeITs)
+{
+    HAL_CAN_Start(ptr_hcan);
+    HAL_CAN_ActivateNotification(ptr_hcan, activeITs); // 受信割り込み有効化
+}
+
+void ecan_stop(CAN_HandleTypeDef *ptr_hcan){
+    ecan_stop_advance(ptr_hcan, CAN_IT_RX_FIFO0_MSG_PENDING);
+}
+
+void ecan_stop_advance(CAN_HandleTypeDef *ptr_hcan, uint32_t activeITs){
+    HAL_CAN_Stop(ptr_hcan);
+    HAL_CAN_DeactivateNotification(ptr_hcan, activeITs);
+}
+
+
 
 int sendPacket(CAN_HandleTypeDef *ptr_hcan, int dest_unit_code, int dest_unit_id, int isSendFromMain, uint32_t ph_index, uint32_t ph_entry, int len_pl_body, uint8_t pl_body[])
 {
@@ -210,3 +189,72 @@ int ecan_sendEmptyPacketMtoU(CAN_HandleTypeDef *ptr_hcan, int dest_unit_code, in
     uint8_t pl_body[] = {0};
     return sendPacket(ptr_hcan, dest_unit_code, dest_unit_id, 1, ph_index, ph_entry, 0, pl_body);
 }
+
+
+void ecan_parsePacket(CAN_RxHeaderTypeDef *rxHeader, uint8_t rxData[], uint32_t *unit_code, uint32_t *unit_id, uint32_t *isSendFromMain, uint32_t *pl_index, uint32_t *pl_entry, uint32_t *pl_body_len, uint8_t *pl_body){
+    ecan_addrConvertToCodeId(rxHeader->StdId, unit_code, unit_id, isSendFromMain);
+    ecan_headerConvertToIdxEntry(rxData[0], pl_index, pl_entry);
+    
+    int len = (rxHeader->DLC - 1);
+    *pl_body_len = len;
+
+    for (int i = 0; i < len; i++)
+    {
+        pl_body[i] = rxData[i+1];
+    }
+}
+
+int ecan_idxEntryCompare(uint32_t real_idx, uint32_t real_entry, uint32_t idx, uint32_t entry){
+    return (real_idx == idx) && (real_entry == entry);
+}
+
+
+void ecan_pushFloatToPayload(uint8_t pl[], float fl, int idx){
+    if(fl < 0){
+        fl *= -1;
+    }
+
+    int num = (int)fl;
+    int dec = (int) ((fl - (float)num) * 100 + 0.5f);
+
+    pl[idx] = (uint8_t)num;
+    pl[idx + 1] = (uint8_t)dec;
+}
+
+float ecan_parseFloatFromPayload(uint8_t pl[], int idx) {
+    return (float)pl[idx] + ((float)pl[idx + 1]) / 100.0f;
+}
+
+uint32_t ecan_codeIdConvertToAddr(int unit_code, int unit_id, int isSendfromMain)
+{
+    uint32_t addr = 0;
+    addr += unit_code << 5;
+    addr += unit_id << 1;
+    addr += isSendfromMain;
+
+    return addr;
+}
+
+void ecan_addrConvertToCodeId(uint32_t addr, uint32_t *unit_code_ptr, uint32_t *unit_id_ptr, uint32_t *isSendFromMain_ptr)
+{
+    *unit_code_ptr = (addr & 0x7E0) >> 5;
+    *unit_id_ptr = (addr & 0x1E) >> 1;
+    *isSendFromMain_ptr = addr & 0x001;
+}
+
+void ecan_headerConvertToIdxEntry(uint8_t payload_header, uint32_t *payload_index_ptr, uint32_t *payload_entry_ptr)
+{
+    *payload_index_ptr = (payload_header >> 5) & 0x07;
+    *payload_entry_ptr = payload_header & 0x1F;
+}
+
+uint8_t ecan_idxEntryConvertToHeader(uint32_t payload_index, uint32_t payload_entry)
+{
+    uint8_t left = (payload_index & 0x07) << 5;
+    uint8_t right = payload_entry & 0x1F;
+
+    return (left | right);
+}
+
+
+
