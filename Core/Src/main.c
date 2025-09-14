@@ -1461,7 +1461,7 @@ int arm_drag_set(int catch_maintain_time){
 	static uint32_t arm_catch_timecount = 0;
 	static int arm_drag_set_processNo = 0;
 	static int move_result = 0;
-	static int destination_position = 0
+	static int destination_position = 0;
 
 	if(running_arm_command != destination_position){//さっきまでの
 		arm_drag_set_processNo = 0;
@@ -1478,9 +1478,6 @@ int arm_drag_set(int catch_maintain_time){
 				arm_catch_timecount  = 0;
 				return 1;
 			}else if(catch_state == 1){ //クリーナーを持っていたら離す
-				if(){
-
-				}
 				catch_open(0);
 				if(arm_catch_timecount == 0) arm_catch_timecount= HAL_GetTick();
 				if((HAL_GetTick() - arm_catch_timecount) >= catch_maintain_time){
