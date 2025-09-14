@@ -59,7 +59,7 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-#define ENABLED_PRINTF 0
+#define ENABLED_PRINTF 1
 
 #if ENABLED_PRINTF
 #define DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -244,7 +244,6 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
 			data_type_PCU[1] = Rx2_entry;
 
 		}
-		printf("2");
 	}
 	
 
@@ -276,6 +275,8 @@ TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3;
 int charge_valve = 1;
 int catch_relay_port = 3; //RUのキャッチリレー番号
 int LED_relay_port = 4; //RUのLEDリレー番号
+
+int SW3_last_state = 0;
 
 int Black_initial_position = 40;
 int White_initial_position = 140;
@@ -445,7 +446,7 @@ int main(void)
 		}else if(arm_move_to_aim_position_BTN){
 			arm_FLAG_reset();
 			is_start_move_to_aim_position = 1;
-		}else if(getBtnHoldState(&LED_BTN,100) && getBtnState(BTN_LEFT) != last_LED_state){
+		}else if(getBtnHoldState(&LED_BTN,40) && getBtnState(BTN_LEFT) != last_LED_state){
 			if(getBtnState(BTN_LEFT)){
 				DEBUG_PRINTF("LED\n\r");
 				is_start_LED = 1;
@@ -501,10 +502,11 @@ int main(void)
 
 		}else if(is_start_drag){ //アーム箱位置
 			if(arm_drag_set(1000))	is_start_drag = 0;
-		}else if(is_start_reload_from_drag){//引きずりから自動装てん
-			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag = 0;
-			DEBUG_PRINTF("a\n\r");
 		}
+		// else if(is_start_reload_from_drag){//引きずりから自動装てん
+		// 	if(injection_reload_from_drag(1000) ) is_start_reload_from_drag = 0;
+		// 	DEBUG_PRINTF("a\n\r");
+		// }
 		
 		//射出,チャージ　処理
 		if(charge_FLAG){
@@ -541,6 +543,7 @@ int main(void)
 				reverse = !reverse;
 			}
 			Last_reverse_state = move_reverse_BTN;
+			
 		}
 		if(reverse == 1) RU_Toggle_relay(&hcan1, 1, LED_relay_port,1000,300);
 
@@ -550,10 +553,30 @@ int main(void)
 		if(is_start_beetle_set){
 			if(injection_charge() ) is_start_beetle_set = 0;
 		} 
-		
-		if(!HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)){
-			ALL_LED_OFF();
+
+
+		if(Black_charge_state == 1 || White_charge_state == 1){
+			HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 1);
+		}else if(Black_charge_state == 0 && White_charge_state == 0){
+			HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 0);
 		}
+
+
+
+		if(!HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)){//射出
+			injection_release(1, 1);
+		}
+
+		if(!HAL_GPIO_ReadPin(SW3_GPIO_Port, SW3_Pin) !=  SW3_last_state){//キャリブレーション
+			if(!HAL_GPIO_ReadPin(SW3_GPIO_Port, SW3_Pin)){
+				is_start_calibration = 1;
+			}
+			
+			SW3_last_state = !HAL_GPIO_ReadPin(SW3_GPIO_Port, SW3_Pin);
+
+		}
+
+		//sw4 チャージ
 
 		if(is_start_LED == 1){ //昆虫図鑑完成
 			LED_state = !LED_state;
@@ -1438,12 +1461,13 @@ int arm_drag_set(int catch_maintain_time){
 	static uint32_t arm_catch_timecount = 0;
 	static int arm_drag_set_processNo = 0;
 	static int move_result = 0;
-	static int destination_position = 0;
+	static int destination_position = 0
 
 	if(running_arm_command != destination_position){//さっきまでの
 		arm_drag_set_processNo = 0;
 		arm_catch_timecount  = 0;
 		move_result = 0;
+
 
 	}
 	
@@ -1454,6 +1478,9 @@ int arm_drag_set(int catch_maintain_time){
 				arm_catch_timecount  = 0;
 				return 1;
 			}else if(catch_state == 1){ //クリーナーを持っていたら離す
+				if(){
+
+				}
 				catch_open(0);
 				if(arm_catch_timecount == 0) arm_catch_timecount= HAL_GetTick();
 				if((HAL_GetTick() - arm_catch_timecount) >= catch_maintain_time){

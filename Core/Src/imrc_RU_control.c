@@ -54,5 +54,7 @@ void RU_Toggle_relay(CAN_HandleTypeDef *ptr_hcan, int RU_unit_id, int relay_No, 
 
     printf("RU Toggle relay %d: %d\n\r", body[0], body[1]);
   }
+
+  
   
 }
