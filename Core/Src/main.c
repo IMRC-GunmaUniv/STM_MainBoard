@@ -59,6 +59,38 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
+//プログラム内　グローバル変数
+int is_start_move_to_aim_position = 0;
+int is_start_calibration = 0;
+int is_start_injection_release = 0;
+int is_start_injection_set = 0;
+int is_start_drag = 0;
+int is_start_beetle_set = 0;
+int is_start_reload_from_drag = 0;
+int is_start_move_to_catch = 0;
+int is_start_all_injection = 0;
+int is_start_Black_injection = 0;
+int is_start_White_injection = 0;
+int is_start_LED = 0;
+
+int charge_FLAG = 0;
+
+int last_arm_command = 0;
+int  running_arm_command = 0;
+
+int reverse = 0; // 0:通常, 1:反転
+int inertia_flag = 0;
+uint32_t inertia_start_time = 0;
+int catch_state = 0;
+int null;
+int Black_charge_state = 0; //射出チャージ時:1 非チャージ時:0
+int White_charge_state = 0; //射出チャージ時:1 非チャージ時:0
+int arm_position = 10;
+TIM_HandleTypeDef *Black_lock_Servo_HT;
+uint32_t Black_lock_Servo_CN;
+TIM_HandleTypeDef *White_lock_Servo_HT;
+uint32_t White_lock_Servo_CN;
+
 typedef struct {//長押し用構造体
     uint32_t press_start_time;
     int is_pressed;
@@ -67,6 +99,8 @@ typedef struct {//長押し用構造体
 
 ButtonHandle Black_injection_release_BTN = {0, 0, 0};
 ButtonHandle White_injection_release_BTN = {0, 0, 0};
+ButtonHandle LED_BTN = {0, 0, 0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -79,7 +113,7 @@ static void MX_TIM2_Init(void);
 static void MX_TIM3_Init(void);
 static void MX_TIM5_Init(void);
 /* USER CODE BEGIN PFP */
-//プロトタイプ宣言
+
 void connection_monitoring(float); //ESPとの接続確認関数
 void unit_check(int wait_time);
 void ALL_LED_OFF(void);
@@ -100,7 +134,6 @@ void injection_FLAG_reset(void);
 void arm_FLAG_reset(void);
 bool getBtnHoldState(ButtonHandle *, uint32_t);
 
-
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -109,40 +142,6 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 	HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 100);
 	return ch;
 }
-
-//プログラム内　グローバル変数
-int is_start_move_to_aim_position = 0;
-int is_start_calibration = 0;
-int is_start_injection_release = 0;
-int is_start_injection_set = 0;
-int is_start_drag = 0;
-int is_start_beetle_set = 0;
-int is_start_reload_from_drag = 0;
-int is_start_move_to_catch = 0;
-int is_start_all_injection = 0;
-int is_start_Black_injection = 0;
-int is_start_White_injection = 0;
-
-int charge_FLAG = 0;
-
-int last_arm_command = 0;
-int  running_arm_command = 0;
-
-
-
-
-int reverse = 0; // 0:通常, 1:反転
-int inertia_flag = 0;
-uint32_t inertia_start_time = 0;
-int catch_state = 0;
-int null;
-int Black_charge_state = 0; //射出チャージ時:1 非チャージ時:0
-int White_charge_state = 0; //射出チャージ時:1 非チャージ時:0
-int arm_position = 10;
-TIM_HandleTypeDef *Black_lock_Servo_HT;
-uint32_t Black_lock_Servo_CN;
-TIM_HandleTypeDef *White_lock_Servo_HT;
-uint32_t White_lock_Servo_CN;
 
 //割り込み
 static uint32_t Rx1_unit_code,Rx1_unit_id;
@@ -359,11 +358,12 @@ int main(void)
 		int reload_from_drag_BTN = 0; //自動装填   
 		int charge_BTN = getBtnState(BTN_UP);
 		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
-		int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
+		LED_BTN.BTN_state = getBtnState(BTN_LEFT); //昆虫図鑑完成
+		//int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
 		
 		int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1}; //全射出
-		//int Black_injection_release_BTN = is_button_held(,100); //黒い射出、射出
-		//int White_injection_release_BTN = getBtnState(BTN_L1); //白い射出、射出
+		White_injection_release_BTN.BTN_state = getBtnState(BTN_L1); //白射出（長押し）
+		Black_injection_release_BTN.BTN_state = getBtnState(BTN_RIGHT); //黒射出（長押し）
 
 		int catch_open_BTN = getBtnState(BTN_L2); //つかむ機構　開
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
@@ -372,17 +372,8 @@ int main(void)
 		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 30);
 		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 100);
 
-
-		White_injection_release_BTN.BTN_state = getBtnState(BTN_L1);
-		Black_injection_release_BTN.BTN_state = getBtnState(BTN_RIGHT);
-		
-
-
 		//printf("curent position: %d\n\r",arm_position);
 		//printf("change state  release1 : %d  release2 : %d \n\r", Black_charge_state, White_charge_state);
-
-
-
 
 		//---コントローラーのボタン処理---
 		allBtnAxiState(); //ボタンの状態を更新
@@ -408,6 +399,14 @@ int main(void)
 		}else if(arm_move_to_aim_position_BTN){
 			arm_FLAG_reset();
 			is_start_move_to_aim_position = 1;
+		}else if(getBtnHoldState(&LED_BTN,60) && getBtnState(BTN_LEFT) != last_LED_state){
+			if(getBtnState(BTN_LEFT)){
+				printf("LED\n\r");
+				is_start_LED = 1;
+				
+			}
+			last_LED_state = getBtnState(BTN_LEFT);
+			
 		}
 
 	
@@ -417,12 +416,12 @@ int main(void)
 			
 
 			is_start_all_injection = 1;
-		}else if(getBtnHoldState(&White_injection_release_BTN, 50) && charge_FLAG == 0){
+		}else if(getBtnHoldState(&White_injection_release_BTN, 70) && charge_FLAG == 0){
 			injection_FLAG_reset();
 
 
 			is_start_White_injection = 1;
-		}else if(getBtnHoldState(&Black_injection_release_BTN, 50) && charge_FLAG == 0){
+		}else if(getBtnHoldState(&Black_injection_release_BTN, 70) && charge_FLAG == 0){
 			injection_FLAG_reset();
 			
 
@@ -435,6 +434,8 @@ int main(void)
 		if(charge_BTN){
 			charge_FLAG = 1;
 		}
+
+
 
 
 		/*-----------処理-----------*/
@@ -457,15 +458,8 @@ int main(void)
 		}else if(is_start_reload_from_drag){//引きずりから自動装てん
 			if(injection_reload_from_drag(1000) ) is_start_reload_from_drag = 0;
 			printf("a\n\r");
-		}else if(LED_BTN != last_LED_state){ //昆虫図鑑完成
-			if (LED_BTN) {
-				LED_state = !LED_state;
-				printf("LED State:%d\n\r",LED_state);
-				RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
-			}
-			last_LED_state = LED_BTN;
 		}
-
+		
 		//射出,チャージ　処理
 		if(charge_FLAG){
 			printf("charge\n\r");
@@ -509,6 +503,14 @@ int main(void)
 		if(!HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)){
 			ALL_LED_OFF();
 		}
+
+		if(is_start_LED == 1){ //昆虫図鑑完成
+			LED_state = !LED_state;
+			printf("LED State:%d\n\r",LED_state);
+			RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
+			is_start_LED = 0;
+		}
+
 
     /* USER CODE END WHILE */
 
