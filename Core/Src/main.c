@@ -225,7 +225,6 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){//タイマー割り
 	if (htim->Instance == TIM5){
         ecan_sendEmptyPacketMtoU(&hcan1, 18, 1, 0, 5);
     }
-	
 }
 
 
@@ -348,6 +347,7 @@ int main(void)
 
 	//ローカル変数
 	int Last_reverse_state = 0; 
+	int Last_caliblation_state= 0;
 	int last_LED_state = 0;
 	int LED_state = 0;
 
@@ -365,7 +365,9 @@ int main(void)
 
 		//int reload_from_drag_BTN = getBtnState(BTN_UP); //自動装填
 		int reload_from_drag_BTN = 0; //自動装填   
-		int charge_BTN = getBtnState(BTN_UP);
+		//int charge_BTN = getBtnState(BTN_UP);
+		int charge_BTN = 0;
+
 		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
 		LED_BTN.BTN_state = getBtnState(BTN_LEFT); //昆虫図鑑完成
 		//int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
@@ -390,9 +392,13 @@ int main(void)
 
 		/*-----------フラグ-----------*/
 		//アーム　フラグ建築
-		if(send_caliblation_BTN){ 
-			arm_FLAG_reset();
-			is_start_calibration = 1;
+		if(send_caliblation_BTN != Last_caliblation_state){ 
+			if(send_caliblation_BTN ){
+				arm_FLAG_reset();
+				is_start_calibration = 1;
+			}
+
+			Last_caliblation_state = send_caliblation_BTN;
 		}else if(reload_from_drag_BTN){
 			arm_FLAG_reset();
 			is_start_reload_from_drag = 1; //引きずる機構から再装填 新
@@ -408,7 +414,7 @@ int main(void)
 		}else if(arm_move_to_aim_position_BTN){
 			arm_FLAG_reset();
 			is_start_move_to_aim_position = 1;
-		}else if(getBtnHoldState(&LED_BTN,60) && getBtnState(BTN_LEFT) != last_LED_state){
+		}else if(getBtnHoldState(&LED_BTN,100) && getBtnState(BTN_LEFT) != last_LED_state){
 			if(getBtnState(BTN_LEFT)){
 				DEBUG_PRINTF("LED\n\r");
 				is_start_LED = 1;
@@ -473,7 +479,7 @@ int main(void)
 		if(charge_FLAG){
 			DEBUG_PRINTF("charge\n\r");
 			if(injection_charge()) charge_FLAG = 0; 
-		}else if(arm_position != injection_position && catch_state == 1){
+		}else if(!(arm_position == injection_position && catch_state == 1)){
 			if(is_start_all_injection){ //二つのボタン、両射出
 				if(injection_release(1, 1)) is_start_all_injection = 0;
 				DEBUG_PRINTF("ALL\n\r");
@@ -484,7 +490,6 @@ int main(void)
 				if(injection_release(1, 0)) is_start_Black_injection = 0;
 				DEBUG_PRINTF("Black\n\r");
 			}
-			
 
 		}
 		
@@ -502,7 +507,6 @@ int main(void)
 		//その他
 		if (move_reverse_BTN != Last_reverse_state){ //動作反転
 			if (move_reverse_BTN) {
-				HAL_GPIO_TogglePin(LED4_GPIO_Port, LED4_Pin);
 				reverse = !reverse;
 			}
 			Last_reverse_state = move_reverse_BTN;
@@ -1226,7 +1230,7 @@ void handleMovement(void){//移動　スティック
 		slow_move=1;
 	} else{
 		slow_move=0;
-	}
+	} 
 	//DEBUG_PRINTF("DIR: %d, Speed: %d\n\r", DIR, spead); // デバッグ用出力
 	MCU_move(DIR, spead, reverse,slow_move); //MCUに移動命令
 }
@@ -1510,6 +1514,7 @@ bool injection_reload_from_drag(int catch_maintain_time){ //引きずり機構�
 }
 
 int send_calibration_signal(void){
+	
 	uint8_t calibration_body[1] = {1};
 	ecan_sendPacketMtoU(&hcan1, 16, 2, 3, 2, 1, calibration_body);
 	DEBUG_PRINTF("send calibration signal\n\r");
@@ -1602,7 +1607,7 @@ void Error_Handler(void)
 	__disable_irq();
 	while (1)
 	{
-		DEBUG_PRINTF("Error\n\r");
+		printf("Error\n\r");
 		HAL_GPIO_WritePin(BZ_GPIO_Port,BZ_Pin,1);
 	}
   /* USER CODE END Error_Handler_Debug */
