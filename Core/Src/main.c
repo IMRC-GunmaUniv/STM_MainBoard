@@ -59,7 +59,7 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-#define ENABLED_PRINTF 1
+#define ENABLED_PRINTF 0
 
 #if ENABLED_PRINTF
 #define DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -541,8 +541,13 @@ int main(void)
 		if (move_reverse_BTN != Last_reverse_state){ //動作反転
 			if (move_reverse_BTN) {
 				reverse = !reverse;
+				printf("%d",reverse);
+				if(reverse == 0){
+					RU_control(&hcan1, 1, LED_relay_port, 0);
+				} 
 			}
 			Last_reverse_state = move_reverse_BTN;
+			
 			
 		}
 		if(reverse == 1) RU_Toggle_relay(&hcan1, 1, LED_relay_port,1000,300);

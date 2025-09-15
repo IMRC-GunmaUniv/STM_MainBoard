@@ -18,7 +18,7 @@ bool RU_control(CAN_HandleTypeDef *ptr_hcan,int RU_unit_id,int relay_No,int rela
     printf("Invalid relay number: %d\n\r", relay_No);
     return; // 無効なリレー番号
   }else{
-    relayState[relay_No - 1] = relay_State; // relayState配列に値を格納
+    relayState[relay_No - 1] = relay_State; // relayState配列変更
   }       
 
   for (int i = 0; i < 4; i++){
@@ -49,8 +49,9 @@ void RU_Toggle_relay(CAN_HandleTypeDef *ptr_hcan, int RU_unit_id, int relay_No, 
     state = !(state);    // 0 ⇔ 1 を切り替え
     last_tick = now;       // 最終更新時刻を更新
 
+
     uint8_t body[] = {relay_No, state};
-    ecan_sendPacketMtoU(ptr_hcan, 19, RU_unit_id, 3, 0, 2, body);
+    RU_control(ptr_hcan, RU_unit_id, relay_No, state);
 
     printf("RU Toggle relay %d: %d\n\r", body[0], body[1]);
   }
