@@ -142,6 +142,7 @@ int send_calibration_signal(void);
 void injection_FLAG_reset(void);
 void arm_FLAG_reset(void);
 bool getBtnHoldState(ButtonHandle *, uint32_t);
+void Buzzer_toggle(uint32_t);
 
 /* USER CODE END PFP */
 
@@ -384,24 +385,22 @@ int main(void)
 	int LED_state = 0;
 
 	while(1){
+
 		connection_monitoring(1700); //各ユニットとの接続確認
 
 		//ボタン指定
 		int beetle_set_BTN = !HAL_GPIO_ReadPin(SW4_GPIO_Port, SW4_Pin); //カブトムシ装填
-		int send_calibration_BTN[] = {BTN_R1 , BTN_LEFT}; //キャリブレーション信号送信
+		int send_calibration_BTN = getBtnState(BTN_LEFT); //キャリブレーション信号送信
 
 		int set_injection_BTN = getBtnState(BTN_X);  //射出装填 △
 		int arm_move_to_aim_position_BTN = getBtnState(BTN_Y);  //アーム狙う位置　□
 		int arm_move_to_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
 		int arm_move_to_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
 
-		//int reload_from_drag_BTN = getBtnState(BTN_UP); //自動装填
-		int reload_from_drag_BTN = 0; //自動装填   
-		//int charge_BTN = getBtnState(BTN_UP);
-		int charge_BTN = 0;
-
 		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
-		LED_BTN.BTN_state = getBtnState(BTN_LEFT); //昆虫図鑑完成
+		int LED_buttons[] = {BTN_UP , BTN_L1};  //昆虫図鑑完成
+
+		//LED_BTN.BTN_state = getBtnState(BTN_LEFT); //昆虫図鑑完成
 		//int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
 		
 		int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1}; //全射出
@@ -412,11 +411,9 @@ int main(void)
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
 		//R1は速度を30に設定（handleMovement内）
 
-		int send_caliblation_BTN = getBtnMultiState(send_calibration_BTN, 2, 30);
+		int LED_BTN = getBtnMultiState(LED_buttons, 2, 30);
 		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 30);
 
-		//DEBUG_PRINTF("curent position: %d\n\r",arm_position);
-		//DEBUG_PRINTF("change state  release1 : %d  release2 : %d \n\r", Black_charge_state, White_charge_state);
 
 		//---コントローラーのボタン処理---
 		allBtnAxiState(); //ボタンの状態を更新
@@ -424,16 +421,13 @@ int main(void)
 
 		/*-----------フラグ-----------*/
 		//アーム　フラグ建築
-		if(send_caliblation_BTN != Last_caliblation_state){ 
-			if(send_caliblation_BTN ){
+		if(send_calibration_BTN != Last_caliblation_state){ 
+			if(send_calibration_BTN ){
 				arm_FLAG_reset();
 				is_start_calibration = 1;
 			}
 
-			Last_caliblation_state = send_caliblation_BTN;
-		}else if(reload_from_drag_BTN){
-			arm_FLAG_reset();
-			is_start_reload_from_drag = 1; //引きずる機構から再装填 新
+			Last_caliblation_state = send_calibration_BTN;
 		}else if(set_injection_BTN){
 			arm_FLAG_reset();
 			is_start_injection_set = 1;   //射出装填　新
@@ -446,13 +440,13 @@ int main(void)
 		}else if(arm_move_to_aim_position_BTN){
 			arm_FLAG_reset();
 			is_start_move_to_aim_position = 1;
-		}else if(getBtnHoldState(&LED_BTN,40) && getBtnState(BTN_LEFT) != last_LED_state){
+		}else if(LED_BTN && LED_BTN != last_LED_state){
 			if(getBtnState(BTN_LEFT)){
 				DEBUG_PRINTF("LED\n\r");
 				is_start_LED = 1;
 				
 			}
-			last_LED_state = getBtnState(BTN_LEFT);
+			last_LED_state = LED_BTN;
 			
 		}
 
@@ -477,11 +471,6 @@ int main(void)
 			injection_FLAG_reset();
 
 		}
-
-		if(charge_BTN){
-			charge_FLAG = 1;
-		}
-
 
 
 
@@ -526,9 +515,6 @@ int main(void)
 
 		}
 		
-		
-
-		
 
 		//つかむ機構
 		if(catch_open_BTN){//つかむアーム開 ok
@@ -537,20 +523,22 @@ int main(void)
 			catch_close(1);
 		}
 
+
 		//その他
 		if (move_reverse_BTN != Last_reverse_state){ //動作反転
 			if (move_reverse_BTN) {
 				reverse = !reverse;
-				printf("%d",reverse);
 				if(reverse == 0){
-					RU_control(&hcan1, 1, LED_relay_port, 0);
+					HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_RESET); // OFF
 				} 
 			}
 			Last_reverse_state = move_reverse_BTN;
 			
+		}
+		if(reverse == 1){
+			Buzzer_toggle(1000);
 			
 		}
-		if(reverse == 1) RU_Toggle_relay(&hcan1, 1, LED_relay_port,1000,300);
 
 		
 
@@ -560,14 +548,21 @@ int main(void)
 		} 
 
 
+		if(is_start_LED == 1){ //昆虫図鑑完成
+			LED_state = !LED_state;
+			DEBUG_PRINTF("LED State:%d\n\r",LED_state);
+			RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
+			is_start_LED = 0;
+		}
+
+		//LED
 		if(Black_charge_state == 1 || White_charge_state == 1){
 			HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 1);
 		}else if(Black_charge_state == 0 && White_charge_state == 0){
 			HAL_GPIO_WritePin(LED4_GPIO_Port, LED4_Pin, 0);
 		}
 
-
-
+		//SW
 		if(!HAL_GPIO_ReadPin(SW1_GPIO_Port, SW1_Pin)){//射出
 			injection_release(1, 1);
 		}
@@ -583,12 +578,6 @@ int main(void)
 
 		//sw4 チャージ
 
-		if(is_start_LED == 1){ //昆虫図鑑完成
-			LED_state = !LED_state;
-			DEBUG_PRINTF("LED State:%d\n\r",LED_state);
-			RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
-			is_start_LED = 0;
-		}
 
 
     /* USER CODE END WHILE */
@@ -1090,17 +1079,6 @@ void injection_FLAG_reset(void){
 
 }
 
-void BZ_ON(int On_Time){
-	static uint32_t BZ_Start_time = 0;
-	if(BZ_Start_time == 0) BZ_Start_time = HAL_GetTick();
-	if(HAL_GetTick()-BZ_Start_time <= On_Time ){
-		HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, 1);
-	}else{
-		HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, 0);
-		BZ_Start_time = 0;
-	}
-}
-
 
 /*接続確認*/
 int device_list[5] = {0, 0, 0, 0, 0}; // 接続中のデバイス配列｛WCD,　PCU,　MCU1, MCU2,　RU｝　0:未接続　1:接続中
@@ -1326,8 +1304,6 @@ void injection_Init(int __charge_valve, TIM_HandleTypeDef *__Black_lock_Servo_HT
 
 bool injection_charge(void){//射出チャージ　自動
 	static uint32_t injection_start_time = 0;
-	static int Black_charge_doProsess = 0;
-	static int White_charge_doProsess = 0;
 
 	if(Black_charge_state == 0 || White_charge_state == 0){//どちらかがチャージされていないとき
 		if(injection_start_time == 0){//1
@@ -1361,8 +1337,6 @@ bool injection_charge(void){//射出チャージ　自動
 }
 
 int injection_release(int Black_release_doProsess, int White_release_doProsess){//射出!!　
-	static uint32_t injection_release_timecount = 0;
-
 	if(Black_charge_state == 0 && White_charge_state == 0){ //どちらもチャージされていない
 		return 1;
 	}else{
@@ -1593,6 +1567,24 @@ void catch_close(int autoUpdate){
 	RU_control(&hcan1, 1, catch_relay_port, 1);
 	if(autoUpdate) catch_state = 1;
 	return;
+}
+
+void Buzzer_toggle(uint32_t interval_time){
+    static uint32_t last_tick = 0;
+    static uint8_t buzzer_state = 0; // 0: OFF, 1: ON
+
+    uint32_t now = HAL_GetTick();
+
+    if (now - last_tick >= interval_time) {
+        last_tick = now;
+        buzzer_state = !buzzer_state;
+
+        if (buzzer_state) {
+            HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_SET); // ON
+        } else {
+            HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, GPIO_PIN_RESET); // OFF
+        }
+    }
 }
 
 //ライブラリに入れたいなーーー
