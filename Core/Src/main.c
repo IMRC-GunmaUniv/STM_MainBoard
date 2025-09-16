@@ -59,7 +59,7 @@ TIM_HandleTypeDef htim5;
 UART_HandleTypeDef huart3;
 
 /* USER CODE BEGIN PV */
-#define ENABLED_PRINTF 0
+#define ENABLED_PRINTF 1
 
 #if ENABLED_PRINTF
 #define DEBUG_PRINTF(...) printf(__VA_ARGS__)
@@ -398,7 +398,7 @@ int main(void)
 		int arm_move_to_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
 
 		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
-		int LED_buttons[] = {BTN_UP , BTN_L1};  //昆虫図鑑完成
+		int LED_buttons[] = {BTN_UP , BTN_R1};  //昆虫図鑑完成
 
 		//LED_BTN.BTN_state = getBtnState(BTN_LEFT); //昆虫図鑑完成
 		//int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
@@ -411,8 +411,8 @@ int main(void)
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
 		//R1は速度を30に設定（handleMovement内）
 
-		int LED_BTN = getBtnMultiState(LED_buttons, 2, 30);
-		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 30);
+		int LED_BTN = getBtnMultiState(LED_buttons, 2, 100);
+		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 50);
 
 
 		//---コントローラーのボタン処理---
@@ -440,15 +440,16 @@ int main(void)
 		}else if(arm_move_to_aim_position_BTN){
 			arm_FLAG_reset();
 			is_start_move_to_aim_position = 1;
-		}else if(LED_BTN && LED_BTN != last_LED_state){
-			if(getBtnState(BTN_LEFT)){
+		}else if(LED_BTN != last_LED_state){
+			if(LED_BTN){
 				DEBUG_PRINTF("LED\n\r");
-				is_start_LED = 1;
+				is_start_LED = !is_start_LED;
 				
 			}
 			last_LED_state = LED_BTN;
 			
 		}
+		//printf("%d",is_start_LED);
 
 	
 		//射出　フラグ
@@ -549,10 +550,11 @@ int main(void)
 
 
 		if(is_start_LED == 1){ //昆虫図鑑完成
-			LED_state = !LED_state;
-			DEBUG_PRINTF("LED State:%d\n\r",LED_state);
-			RU_control(&hcan1, 1, LED_relay_port, LED_state);//昆虫完成
-			is_start_LED = 0;
+			DEBUG_PRINTF("LED State:%d\n\r",1);
+			RU_control(&hcan1, 1, LED_relay_port, 1);//昆虫完成
+		}else if(is_start_LED == 0){ //昆虫図鑑完成
+			DEBUG_PRINTF("LED State:%d\n\r",0);
+			RU_control(&hcan1, 1, LED_relay_port, 0);//昆虫完成
 		}
 
 		//LED
