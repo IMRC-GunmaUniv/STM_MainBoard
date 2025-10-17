@@ -397,11 +397,11 @@ int main(void)
 		int arm_move_to_catch_position_BTN = getBtnState(BTN_A); //アームキャッチ位置　〇
 		int arm_move_to_drag_BTN = getBtnState(BTN_B); //アーム引きずり位置　×
 
-		int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
-		int LED_buttons[] = {BTN_UP , BTN_R1};  //昆虫図鑑完成
+		//int move_reverse_BTN = getBtnState(BTN_DOWN);  //動作反転
 
-		//LED_BTN.BTN_state = getBtnState(BTN_LEFT); //昆虫図鑑完成
-		//int LED_BTN = getBtnState(BTN_LEFT); //昆虫完成
+		//int LED_buttons[] = {BTN_UP , BTN_R1};  //昆虫図鑑完成
+    //int LED_BTN = getBtnMultiState(LED_buttons, 2, 100);
+    int LED_BTN = getBtnState(BTN_UP);
 		
 		int ALL_injection_buttons[]={BTN_RIGHT , BTN_L1}; //全射出
 		White_injection_release_BTN.BTN_state = getBtnState(BTN_L1); //白射出（長押し）
@@ -411,7 +411,7 @@ int main(void)
 		int catch_close_BTN = getBtnState(BTN_R2); //つかむ機構　閉
 		//R1は速度を30に設定（handleMovement内）
 
-		int LED_BTN = getBtnMultiState(LED_buttons, 2, 100);
+		
 		int ALL_injection_BTN = getBtnMultiState(ALL_injection_buttons, 2, 50);
 
 
