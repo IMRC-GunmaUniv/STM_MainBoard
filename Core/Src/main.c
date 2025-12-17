@@ -87,7 +87,7 @@ static void MX_USART1_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 int __io_putchar(int ch){ // printfを使えるようにする関数
-	HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 100);
+	HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 10);
 	return ch;
 }
 
@@ -110,21 +110,33 @@ uint8_t rx_data;
 uint8_t rx_buffer[RX_BUFFER_SIZE];
 uint8_t rx_index = 0;
 uint8_t rx_complete = 0;
+uint8_t rx_started = 0;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
-  if (huart->Instance == USART1)
-  {
-    if (rx_data == '\n')
-    {
-      rx_buffer[rx_index] = '\0';
-      rx_complete = 1;
-    }
-    else
-    {
-      if (rx_index < RX_BUFFER_SIZE - 1)
-      {
-        rx_buffer[rx_index++] = rx_data;
+  if (huart->Instance == USART1) {
+    if (!rx_started) {
+      if (rx_data == '#') {//#だったら開始
+        rx_started = 1;
+        rx_index = 0;
+        //rx_buffer[rx_index++] = rx_data; // # も格納
+      }
+
+    } else {
+      if (rx_data == '\r' || rx_data == '\n') {
+        rx_buffer[rx_index] = '\0';
+        rx_complete = 1;
+        rx_started = 0; // 次回まで待機
+        rx_index = 0;
+      } else {
+        if (rx_index < RX_BUFFER_SIZE - 1) {
+          rx_buffer[rx_index++] = rx_data;
+        } else {
+          // バッファオーバーフロー時リセット
+          rx_index = 0;
+          rx_started = 0;
+          rx_complete = 0;
+        }
       }
     }
 
@@ -217,20 +229,12 @@ int main(void)
   {
 
     if (rx_complete){
-      // "Received: " を送信
-      HAL_UART_Transmit(&huart3, (uint8_t *)"Received: ", strlen("Received: "), HAL_MAX_DELAY);
-
-      // rx_buffer の内容を送信
-      HAL_UART_Transmit(&huart3, (uint8_t *)rx_buffer, strlen(rx_buffer), HAL_MAX_DELAY);
-
-      // 改行を送信
-      HAL_UART_Transmit(&huart3, (uint8_t *)"\r\n", 2, HAL_MAX_DELAY);
-
-      
+     printf("Received: %s\r\n", rx_buffer);
+  
       rx_complete = 0;
       rx_index = 0;
 
-      HAL_UART_Receive_IT(&huart3, &rx_data, 1);
+      HAL_UART_Receive_IT(&huart1, &rx_data, 1);
     }
   
     /* USER CODE END WHILE */
