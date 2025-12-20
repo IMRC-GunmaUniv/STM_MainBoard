@@ -39,19 +39,23 @@
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
 
+//PCデータ構造体
+#define MODULE_NAME_LEN 16
+#define TOPIC_NAME_LEN  32
+#define MAX_DATA_NUM    20
+
+typedef struct {
+  char  module_name[MODULE_NAME_LEN];
+  char  topic_name[TOPIC_NAME_LEN];
+  int   data_len;
+  float data[MAX_DATA_NUM];
+} pc_uart;
 /* USER CODE END PTD */
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-typedef struct {
-  int direction;
-  uint8_t magnitude;  // 0〜100
-} StickResult;
 
-StickResult getStick(uint8_t x, uint8_t y);
-int save_csv_values(char *data, float *values, int max_values);
-
-
+void parse_csv_to_struct(char *csv, pc_uart *uart_data);
 
 
 /* USER CODE END PD */
@@ -137,13 +141,14 @@ void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
 	}
 	
 
+//生存信号
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){//タイマー割り込み　生存信号
 	if (htim->Instance == TIM5){
         ecan_sendEmptyPacketMtoU(&hcan2, 18, 1, 0, 5);
     }
 }
 
-
+//UART割り込み
 #define RX_BUFFER_SIZE 64
 uint8_t UART_PC_RAWdata;
 uint8_t UART_PC_data[RX_BUFFER_SIZE];
@@ -151,9 +156,8 @@ uint8_t rx_index = 0;
 uint8_t PC_UART_complete = 0;
 uint8_t PC_uart_started = 0;
 
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
-{
-  if (huart->Instance == USART1) {
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+  if (huart->Instance == USART1) {//PC
     if (!PC_uart_started) {
       if (UART_PC_RAWdata == '#') {//#だったら開始
         PC_uart_started = 1;
@@ -182,16 +186,6 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
     HAL_UART_Receive_IT(&huart1, &UART_PC_RAWdata, 1);
   }
 }
-
-
-
-//ピン命名
-#define GPIO_D1_TIM_CN TIM_CHANNEL_4
-#define GPIO_D3_TIM_CN TIM_CHANNEL_1
-#define GPIO_D4_TIM_CN TIM_CHANNEL_1
-TIM_HandleTypeDef *GPIO_D1_TIM_HT = &htim2; 
-TIM_HandleTypeDef *GPIO_D3_TIM_HT = &htim2; 
-TIM_HandleTypeDef *GPIO_D4_TIM_HT = &htim3; 
 
 
 /* USER CODE END Private
@@ -268,20 +262,14 @@ int main(void)
   while (1)
   {
     if (PC_UART_complete){
-      float values[10];
+      pc_uart pc_data;
+      parse_csv_to_struct(UART_PC_data, &pc_data);
 
-      int count = save_csv_values(UART_PC_data, values, 10);
-      StickResult StickDetail = getStick((uint8_t)values[3],(uint8_t)values[4]);
-
-      printf("stickdirection = %d \tstickResult = %d\n\r",StickDetail.direction,StickDetail.magnitude);
-      // for (int i = 0; i < count; i++) {
-      //   printf("[%.2f] " ,values[i]);
-      // }
-      // printf("\n\r");
-
-      //printf("[%.2f][%.2f][%.2f]\n\r", values[3],values[4],values[8]);
-      uint8_t send_data[] = {StickDetail.direction,StickDetail.magnitude};
-      ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 2, send_data);
+      printf("moduleName: %s, topicName: %s, dataLen: %d",pc_data.module_name,pc_data.topic_name,pc_data.data_len);
+      for(int i=0;i<=pc_data.data_len;i++){
+        printf("[%f]",pc_data.data[i]);
+      }
+      printf("\n\r");
 
       PC_UART_complete = 0;
     }
@@ -798,86 +786,45 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-int save_csv_values(char *data, float *values, int max_values)
-{
-  char *token = strtok(data, ",");
-  int index = 0;
+/* USER CODE BEGIN 4 */
+void parse_csv_to_struct(char *csv, pc_uart *uart_data){
+  char *token;
   int field = 0;
+  int data_index = 0;
 
-  while (token && index < max_values) {
+  token = strtok(csv, ",");
 
-    if (field < 2) {
-      // M, cmd_vel → 0
-      values[index++] = 0.0f;
-    } else {
-      char *endptr;
-      float v = strtof(token, &endptr);
+  while (token != NULL) {
 
-      if (endptr == token) {
-        v = 0.0f;   // 数値変換できなかった場合
-      }
+    switch (field) {
+      case 0: // module_name
+        strncpy(uart_data->module_name, token, MODULE_NAME_LEN - 1);
+        uart_data->module_name[MODULE_NAME_LEN - 1] = '\0';
+        break;
 
-      values[index++] = v;
+      case 1: // topic_name
+        strncpy(uart_data->topic_name, token, TOPIC_NAME_LEN - 1);
+        uart_data->topic_name[TOPIC_NAME_LEN - 1] = '\0';
+        break;
+
+      case 2: // data_len
+        uart_data->data_len = atoi(token);
+        if (uart_data->data_len > MAX_DATA_NUM) {
+          uart_data->data_len = MAX_DATA_NUM;
+        }
+        break;
+
+      default: // data[]
+        if (data_index < uart_data->data_len) {
+          uart_data->data[data_index++] = atof(token);
+        }
+        break;
     }
 
     field++;
     token = strtok(NULL, ",");
   }
-
-  return index;
 }
-
-#include <math.h>
-
-#define CENTER 127
-#define DEADZONE 15
-#define MAX_RADIUS 127.0f
-
-StickResult getStick(uint8_t x, uint8_t y)
-{
-    StickResult result;
-
-    int dx = x - CENTER;
-    int dy = y - CENTER;
-
-    // 傾きの大きさ（距離）
-    float radius = sqrt(dx * dx + dy * dy);
-
-    // デッドゾーン
-    if (radius < DEADZONE) {
-        result.direction = Stop;
-        result.magnitude = 0;
-        return result;
-    }
-
-    // 大きさを 0〜100 に正規化
-    float mag = (radius - DEADZONE) / (MAX_RADIUS - DEADZONE);
-    if (mag > 1.0f) mag = 1.0f;
-
-    result.magnitude = (uint8_t)(mag * 100);
-
-    // 角度計算
-    float angle = atan2(dy, dx) * 180.0f / M_PI;
-    if (angle < 0) angle += 360.0f;
-
-    // 方向判定
-    if (angle < 22.5 || angle >= 337.5) result.direction = RIGHT;
-    else if (angle < 67.5)  result.direction = FRONT_RIGHT;
-    else if (angle < 112.5) result.direction = FRONT;
-    else if (angle < 157.5) result.direction = FRONT_LEFT;
-    else if (angle < 202.5) result.direction = LEFT;
-    else if (angle < 247.5) result.direction = BUCK_LEFT;
-    else if (angle < 292.5) result.direction = BUCK;
-    else                    result.direction = BUCK_RIGHT;
-
-    return result;
-}
-
-
-
-
-
-
 
 
 
