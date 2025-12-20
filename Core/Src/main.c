@@ -31,6 +31,7 @@
 #include "imrc_MCU_control.h"
 #include "canCtrlConv.h"  //imrc
 #include "imrc_PCU_control.h" 
+#include <stdint.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -58,6 +59,7 @@ TIM_HandleTypeDef htim5;
 
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart3;
+DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 #define ENABLED_PRINTF 1
@@ -73,6 +75,7 @@ UART_HandleTypeDef huart3;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_CAN1_Init(void);
 static void MX_CAN2_Init(void);
 static void MX_USART3_UART_Init(void);
@@ -87,7 +90,7 @@ static void MX_USART1_UART_Init(void);
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
 int __io_putchar(int ch){ // printfを使えるようにする関数
-	HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 10);
+	HAL_UART_Transmit(&huart3, (uint8_t *)&ch, 1, 100);
 	return ch;
 }
 
@@ -106,41 +109,41 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){//タイマー割り
 
 
 #define RX_BUFFER_SIZE 64
-uint8_t rx_data;
-uint8_t rx_buffer[RX_BUFFER_SIZE];
+uint8_t UART_PC_RAWdata;
+uint8_t UART_PC_data[RX_BUFFER_SIZE];
 uint8_t rx_index = 0;
-uint8_t rx_complete = 0;
-uint8_t rx_started = 0;
+uint8_t PC_UART_complete = 0;
+uint8_t PC_uart_started = 0;
 
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
   if (huart->Instance == USART1) {
-    if (!rx_started) {
-      if (rx_data == '#') {//#だったら開始
-        rx_started = 1;
+    if (!PC_uart_started) {
+      if (UART_PC_RAWdata == '#') {//#だったら開始
+        PC_uart_started = 1;
         rx_index = 0;
         //rx_buffer[rx_index++] = rx_data; // # も格納
       }
 
     } else {
-      if (rx_data == '\r' || rx_data == '\n') {
-        rx_buffer[rx_index] = '\0';
-        rx_complete = 1;
-        rx_started = 0; // 次回まで待機
+      if (UART_PC_RAWdata == '\r' || UART_PC_RAWdata == '\n') {
+        UART_PC_data[rx_index] = '\0';
+        PC_UART_complete = 1;
+        PC_uart_started = 0; // 次回まで待機
         rx_index = 0;
       } else {
         if (rx_index < RX_BUFFER_SIZE - 1) {
-          rx_buffer[rx_index++] = rx_data;
+          UART_PC_data[rx_index++] = UART_PC_RAWdata;
         } else {
           // バッファオーバーフロー時リセット
           rx_index = 0;
-          rx_started = 0;
-          rx_complete = 0;
+          PC_uart_started = 0;
+          PC_UART_complete = 0;
         }
       }
     }
 
-    HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+    HAL_UART_Receive_IT(&huart1, &UART_PC_RAWdata, 1);
   }
 }
 
@@ -189,6 +192,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_CAN1_Init();
   MX_CAN2_Init();
   MX_USART3_UART_Init();
@@ -217,7 +221,7 @@ int main(void)
 	HAL_TIM_PWM_Start(&htim3, TIM_CHANNEL_1);
 	HAL_TIM_Base_Start_IT(&htim5); // TIM5 割り込みスタート
 
-	HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+	HAL_UART_Receive_IT(&huart1, &UART_PC_RAWdata, 1);
 
 	printf("Start!!\n\r");
 
@@ -227,20 +231,26 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    if (PC_UART_complete){
+      float values[10];
 
-    if (rx_complete){
-     printf("Received: %s\r\n", rx_buffer);
-  
-      rx_complete = 0;
-      rx_index = 0;
+      int count = save_csv_values(UART_PC_data, values, 10);
 
-      HAL_UART_Receive_IT(&huart1, &rx_data, 1);
+      // for (int i = 0; i < count; i++) {
+      //   printf("[%.2f] " ,values[i]);
+      // }
+      // printf("\n\r");
+
+      printf("[%.2f][%.2f][%.2f]\n\r", values[3],values[4],values[8]);
+      uint8_t send_data[] = {(uint8_t)values[3],(uint8_t)values[4],(uint8_t)values[8]};
+      ecan_sendPacketMtoU(&hcan1, 18, 1, 3, 0, 3, send_data);
+
+
     }
-  
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	}
+  }
   /* USER CODE END 3 */
 }
 
@@ -282,7 +292,7 @@ void SystemClock_Config(void)
   RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_PLLCLK;
   RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
   RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
 
   if (HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_3) != HAL_OK)
   {
@@ -606,6 +616,22 @@ static void MX_USART3_UART_Init(void)
 }
 
 /**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA2_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA2_Stream2_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA2_Stream2_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA2_Stream2_IRQn);
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -734,6 +760,56 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
+/*
+int parse_csv_to_array(char *data, float *values, int max_values) {
+    char *token;
+    int count = 0;
+
+    token = strtok(data, ",");
+    while (token != NULL && count < max_values) {
+      values[count++] = atof(token);  // 文字列をfloatに変換して格納
+      token = strtok(NULL, ",");
+    }
+    return count;
+}
+    */
+
+int save_csv_values(char *data, float *values, int max_values)
+{
+  char *token = strtok(data, ",");
+  int index = 0;
+  int field = 0;
+
+  while (token && index < max_values) {
+
+    if (field < 2) {
+      // M, cmd_vel → 0
+      values[index++] = 0.0f;
+    } else {
+      char *endptr;
+      float v = strtof(token, &endptr);
+
+      if (endptr == token) {
+        v = 0.0f;   // 数値変換できなかった場合
+      }
+
+      values[index++] = v;
+    }
+
+    field++;
+    token = strtok(NULL, ",");
+  }
+
+  return index;
+}
+
+
+
+
+
+
+
+
 
 /*その他*/
 void ALL_LED_OFF(void){//全LED消灯
