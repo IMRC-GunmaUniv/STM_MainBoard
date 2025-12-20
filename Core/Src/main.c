@@ -106,17 +106,41 @@ int __io_putchar(int ch){ // printfを使えるようにする関数
 	return ch;
 }
 
-
+static uint32_t Rx1_unit_code,Rx1_unit_id;
+static CAN_RxHeaderTypeDef RxHeader1;
+static uint8_t RxData1[8];
+static uint32_t id1;
+uint32_t Rx1_index = 0;
+uint32_t Rx1_entry = 0;
+static uint32_t Rx2_unit_code,Rx2_unit_id;
+static CAN_RxHeaderTypeDef RxHeader2;
+static uint8_t RxData2[8];
+static uint32_t id2;
+uint32_t Rx2_index = 0;
+uint32_t Rx2_entry = 0;
 
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){   //CAN割り込み
-	
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
+		id1 = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
+		ecan_addrConvertToCodeId(id1, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
+		ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
+	}
 }
 
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
+	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO1, &RxHeader2, RxData2) == HAL_OK){
+		id2 = (RxHeader2.IDE == CAN_ID_STD)? RxHeader2.StdId : RxHeader2.ExtId;  
+		ecan_addrConvertToCodeId(id2, &Rx2_unit_code, &Rx2_unit_id, 0);  //unit_code,unit_id 判定
+		ecan_headerConvertToIdxEntry(RxData2[0], &Rx2_index, &Rx2_entry);
+
+		}
+	}
 	
-}
 
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){//タイマー割り込み　生存信号
+	if (htim->Instance == TIM5){
+        ecan_sendEmptyPacketMtoU(&hcan2, 18, 1, 0, 5);
+    }
 }
 
 
@@ -259,7 +283,7 @@ int main(void)
       uint8_t send_data[] = {StickDetail.direction,StickDetail.magnitude};
       ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 2, send_data);
 
-
+      PC_UART_complete = 0;
     }
     /* USER CODE END WHILE */
 
@@ -373,9 +397,9 @@ static void MX_CAN2_Init(void)
   hcan2.Init.TimeSeg1 = CAN_BS1_7TQ;
   hcan2.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan2.Init.TimeTriggeredMode = DISABLE;
-  hcan2.Init.AutoBusOff = DISABLE;
+  hcan2.Init.AutoBusOff = ENABLE;
   hcan2.Init.AutoWakeUp = DISABLE;
-  hcan2.Init.AutoRetransmission = DISABLE;
+  hcan2.Init.AutoRetransmission = ENABLE;
   hcan2.Init.ReceiveFifoLocked = DISABLE;
   hcan2.Init.TransmitFifoPriority = DISABLE;
   if (HAL_CAN_Init(&hcan2) != HAL_OK)
