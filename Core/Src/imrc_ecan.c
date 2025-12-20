@@ -161,7 +161,7 @@ int ecan_sendPacketMtoU(CAN_HandleTypeDef *ptr_hcan, int dest_unit_code, int des
 {
     // Main -> Unitのパケットを送信
     // 使うな。Main用。
-    printf("send\n\r");
+
     return sendPacket(ptr_hcan, dest_unit_code, dest_unit_id, 1, ph_index, ph_entry, len_pl_body, pl_body);
 }
 

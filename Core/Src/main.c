@@ -32,6 +32,8 @@
 #include "canCtrlConv.h"  //imrc
 #include "imrc_PCU_control.h" 
 #include <stdint.h>
+#include <string.h>
+
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -41,6 +43,16 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+typedef struct {
+  int direction;
+  uint8_t magnitude;  // 0〜100
+} StickResult;
+
+StickResult getStick(uint8_t x, uint8_t y);
+int save_csv_values(char *data, float *values, int max_values);
+
+
+
 
 /* USER CODE END PD */
 
@@ -209,7 +221,7 @@ int main(void)
 	ecan_start_advance(&hcan1, CAN_IT_RX_FIFO0_MSG_PENDING);
 	
 	ecan_setAllPassFilter_advance(&hcan2, CAN_FILTER_FIFO1, 14, 14);
-  	ecan_start_advance(&hcan2, CAN_IT_RX_FIFO1_MSG_PENDING);
+  ecan_start_advance(&hcan2, CAN_IT_RX_FIFO1_MSG_PENDING);
 
 	
 	//PWM
@@ -235,15 +247,17 @@ int main(void)
       float values[10];
 
       int count = save_csv_values(UART_PC_data, values, 10);
+      StickResult StickDetail = getStick((uint8_t)values[3],(uint8_t)values[4]);
 
+      printf("stickdirection = %d \tstickResult = %d\n\r",StickDetail.direction,StickDetail.magnitude);
       // for (int i = 0; i < count; i++) {
       //   printf("[%.2f] " ,values[i]);
       // }
       // printf("\n\r");
 
-      printf("[%.2f][%.2f][%.2f]\n\r", values[3],values[4],values[8]);
-      uint8_t send_data[] = {(uint8_t)values[3],(uint8_t)values[4],(uint8_t)values[8]};
-      ecan_sendPacketMtoU(&hcan1, 18, 1, 3, 0, 3, send_data);
+      //printf("[%.2f][%.2f][%.2f]\n\r", values[3],values[4],values[8]);
+      uint8_t send_data[] = {StickDetail.direction,StickDetail.magnitude};
+      ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 2, send_data);
 
 
     }
@@ -760,20 +774,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/*
-int parse_csv_to_array(char *data, float *values, int max_values) {
-    char *token;
-    int count = 0;
-
-    token = strtok(data, ",");
-    while (token != NULL && count < max_values) {
-      values[count++] = atof(token);  // 文字列をfloatに変換して格納
-      token = strtok(NULL, ",");
-    }
-    return count;
-}
-    */
-
 int save_csv_values(char *data, float *values, int max_values)
 {
   char *token = strtok(data, ",");
@@ -801,6 +801,52 @@ int save_csv_values(char *data, float *values, int max_values)
   }
 
   return index;
+}
+
+#include <math.h>
+
+#define CENTER 127
+#define DEADZONE 15
+#define MAX_RADIUS 127.0f
+
+StickResult getStick(uint8_t x, uint8_t y)
+{
+    StickResult result;
+
+    int dx = x - CENTER;
+    int dy = y - CENTER;
+
+    // 傾きの大きさ（距離）
+    float radius = sqrt(dx * dx + dy * dy);
+
+    // デッドゾーン
+    if (radius < DEADZONE) {
+        result.direction = Stop;
+        result.magnitude = 0;
+        return result;
+    }
+
+    // 大きさを 0〜100 に正規化
+    float mag = (radius - DEADZONE) / (MAX_RADIUS - DEADZONE);
+    if (mag > 1.0f) mag = 1.0f;
+
+    result.magnitude = (uint8_t)(mag * 100);
+
+    // 角度計算
+    float angle = atan2(dy, dx) * 180.0f / M_PI;
+    if (angle < 0) angle += 360.0f;
+
+    // 方向判定
+    if (angle < 22.5 || angle >= 337.5) result.direction = RIGHT;
+    else if (angle < 67.5)  result.direction = FRONT_RIGHT;
+    else if (angle < 112.5) result.direction = FRONT;
+    else if (angle < 157.5) result.direction = FRONT_LEFT;
+    else if (angle < 202.5) result.direction = LEFT;
+    else if (angle < 247.5) result.direction = BUCK_LEFT;
+    else if (angle < 292.5) result.direction = BUCK;
+    else                    result.direction = BUCK_RIGHT;
+
+    return result;
 }
 
 
