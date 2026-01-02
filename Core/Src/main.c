@@ -24,6 +24,9 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include "stdbool.h"
+#include <stdarg.h>
+#include <stdint.h>
+#include <string.h>
 
 #include "imrc_ecan.h"
 #include "imrc_LD_220MG.h"
@@ -31,8 +34,7 @@
 #include "imrc_MCU_control.h"
 #include "canCtrlConv.h"  //imrc
 #include "imrc_PCU_control.h" 
-#include <stdint.h>
-#include <string.h>
+
 
 /* USER CODE END Includes */
 
@@ -56,6 +58,8 @@ typedef struct {
 /* USER CODE BEGIN PD */
 
 void parse_csv_to_struct(char *csv, pc_uart *uart_data);
+uint8_t clampTo255(float val);
+void PC_printf(const char *fmt, ...);
 
 
 /* USER CODE END PD */
@@ -188,7 +192,7 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 }
 
 
-/* USER CODE END Private
+/* USER CODE END Private */
 /* USER CODE END 0 */
 
 /**
@@ -262,14 +266,31 @@ int main(void)
   while (1)
   {
     if (PC_UART_complete){
+      //printf("data: %s",UART_PC_data);
+
       pc_uart pc_data;
       parse_csv_to_struct(UART_PC_data, &pc_data);
 
-      printf("moduleName: %s, topicName: %s, dataLen: %d",pc_data.module_name,pc_data.topic_name,pc_data.data_len);
-      for(int i=0;i<=pc_data.data_len;i++){
+      //debug
+      /*
+      printf("moduleName: %s, topiNacme: %s, dataLen: %d     ",pc_data.module_name,pc_data.topic_name,pc_data.data_len);
+      for(int i=0;i<pc_data.data_len;i++){
         printf("[%f]",pc_data.data[i]);
       }
       printf("\n\r");
+      */
+
+      if(*pc_data.module_name == 'M'){
+        if(strcmp(pc_data.topic_name, "cmd_vel") == 0){
+          uint8_t send_data[] = {clampTo255(pc_data.data[0]),clampTo255(pc_data.data[1]),clampTo255(pc_data.data[2] /1.7)};
+          printf("%d",clampTo255(pc_data.data[0]));
+          ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 3, send_data);
+        }
+
+      }
+
+      float d[3] = {10.0, 0.0, 0.0};
+      send_to_PC("M", "cmd_vel", 3, d);
 
       PC_UART_complete = 0;
     }
@@ -826,7 +847,48 @@ void parse_csv_to_struct(char *csv, pc_uart *uart_data){
   }
 }
 
+uint8_t clampTo255(float val){
+  int clampVal = 128 + val * 128;
 
+  if(clampVal > 255 ) clampVal = 255;
+  if(clampVal < 0 ) clampVal = 0;
+  
+
+  return (uint8_t)clampVal;
+}
+
+
+void PC_printf(const char *fmt, ...)
+{
+  char buf[128];   // 必要に応じてサイズ調整
+  va_list args;
+
+  va_start(args, fmt);
+  vsnprintf(buf, sizeof(buf), fmt, args);
+  va_end(args);
+
+  HAL_UART_Transmit(&huart1, (uint8_t *)buf, strlen(buf), 100);
+}
+
+int send_to_PC(const char* module_name, const char* topic_name, int len_data_body, const float data[]){
+  char buffer[256];
+  int offset = 0;
+
+  // 先頭2つ（module_name, topic_name）
+  offset += snprintf(buffer + offset, sizeof(buffer) - offset,"%s,%s,%d", module_name, topic_name, len_data_body);
+
+  // data[] の中身
+  for(int i = 0; i < len_data_body; i++){
+    offset += snprintf(buffer + offset, sizeof(buffer) - offset,",%.3f", data[i]);
+  }
+
+  // 最後に改行
+  snprintf(buffer + offset, sizeof(buffer) - offset, "\r\n");
+
+  PC_printf("%s", buffer);
+
+  return 0;
+}
 
 /*その他*/
 void ALL_LED_OFF(void){//全LED消灯
@@ -856,6 +918,8 @@ void Buzzer_toggle(uint32_t interval_time){
         }
     }
 }
+
+
 
 //ライブラリに入れたいなーーー
 #define MAX_BUTTONS 16 
