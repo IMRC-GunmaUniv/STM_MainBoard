@@ -34,6 +34,9 @@
 #include "imrc_MCU_control.h"
 #include "canCtrlConv.h"  //imrc
 #include "imrc_PCU_control.h" 
+#include "stm32f4xx_hal.h"
+#include "stm32f4xx_hal_gpio.h"
+#include "imrc_connect_monitor.h"
 
 
 /* USER CODE END Includes */
@@ -127,12 +130,31 @@ static uint32_t id2;
 uint32_t Rx2_index = 0;
 uint32_t Rx2_entry = 0;
 
+
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){   //CAN割り込み
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
 		id1 = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
 		ecan_addrConvertToCodeId(id1, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
 		ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
-	}
+
+    if(Rx1_unit_code==18 && Rx1_unit_id==1){//PCU
+      conn_rx(1 ,HAL_GetTick());
+
+		}else if(Rx1_unit_code==16 && Rx1_unit_id==1){ //MCU1
+      conn_rx(2 ,HAL_GetTick());
+
+
+		}else if(Rx1_unit_code==16 && Rx1_unit_id==2){ //MCU2
+      conn_rx(3 ,HAL_GetTick());
+
+
+		}else if(Rx1_unit_code==20 && Rx1_unit_id==1){ //LCU
+      conn_rx(4 ,HAL_GetTick());
+
+	  }
+
+  }
 }
 
 void HAL_CAN_RxFifo1MsgPendingCallback(CAN_HandleTypeDef *hcan){
@@ -257,16 +279,29 @@ int main(void)
 
 	HAL_UART_Receive_IT(&huart1, &UART_PC_RAWdata, 1);
 
+  unit_t units[] = {
+    { "PCU"   , 1, 0, 0, 1000 },
+    { "MCU1"  , 2, 0, 0, 1000 },
+    { "MCU2"  , 3, 0, 0, 1000 },
+    { "LCU"   , 4, 0, 0, 1000 },
+  };
+  conn_init(units, 4, 1);
+  HAL_Delay(1000); //ユニット検出
+  conn_update(HAL_GetTick());
+  conn_state();
+
+  HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, 1);
+  HAL_Delay(100); //ユニット検出
+  HAL_GPIO_WritePin(BZ_GPIO_Port, BZ_Pin, 0);
+
 	printf("Start!!\n\r");
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
-  while (1)
-  {
+  while (1){
     if (PC_UART_complete){
-      //printf("data: %s",UART_PC_data);
 
       pc_uart pc_data;
       parse_csv_to_struct(UART_PC_data, &pc_data);
@@ -282,18 +317,38 @@ int main(void)
 
       if(*pc_data.module_name == 'M'){
         if(strcmp(pc_data.topic_name, "cmd_vel") == 0){
-          uint8_t send_data[] = {clampTo255(pc_data.data[0]),clampTo255(pc_data.data[1]),clampTo255(pc_data.data[2] /1.7)};
-          printf("%d",clampTo255(pc_data.data[0]));
-          ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 3, send_data);
+          uint8_t sent_data[] = {clampTo255(pc_data.data[0]),clampTo255(pc_data.data[1]),clampTo255(pc_data.data[2] /1.7)};
+          //printf("%d",clampTo255(pc_data.data[0]));
+          ecan_sendPacketMtoU(&hcan1, 16, 1, 3, 0, 3, sent_data);
+        }
+
+      }else if(*pc_data.module_name == 'L'){
+        if(strcmp(pc_data.topic_name, "led_cmd") == 0){
+          uint8_t sent_data[] = {pc_data.data[0], pc_data.data[1], pc_data.data[2], pc_data.data[3], pc_data.data[4], pc_data.data[5]};
+          //sent_data = {LED_number, mode, r, g, b, period}
+          ecan_sendPacketMtoU(&hcan1, 20, 1, 3, 0, pc_data.data_len, sent_data);
+          
+          printf("sent_data: ");
+
+          for (uint8_t i = 0; i < 6; i++) {
+            printf("%d ", sent_data[i]);
+          }
+
+          printf("\r\n");
+
+
+            
         }
 
       }
 
-      float d[3] = {10.0, 0.0, 0.0};
-      send_to_PC("M", "cmd_vel", 3, d);
 
       PC_UART_complete = 0;
     }
+
+    conn_update(HAL_GetTick());
+    conn_chack();
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -870,7 +925,7 @@ void PC_printf(const char *fmt, ...)
   HAL_UART_Transmit(&huart1, (uint8_t *)buf, strlen(buf), 100);
 }
 
-int send_to_PC(const char* module_name, const char* topic_name, int len_data_body, const float data[]){
+int sent_to_PC(const char* module_name, const char* topic_name, int len_data_body, const float data[]){
   char buffer[256];
   int offset = 0;
 
