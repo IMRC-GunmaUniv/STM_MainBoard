@@ -53,6 +53,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Core/Src/canCtrlConv.c
     Core/Src/imrc_PCU_control.c
     Core/Src/imrc_connect_monitor.c
+    Core/Src/imrc_main.c
 )
 
 # Add include paths
