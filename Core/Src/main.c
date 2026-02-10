@@ -132,22 +132,21 @@ uint32_t Rx2_entry = 0;
 
 
 
+
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan){   //CAN割り込み
 	if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader1, RxData1) == HAL_OK){
 		id1 = (RxHeader1.IDE == CAN_ID_STD)? RxHeader1.StdId : RxHeader1.ExtId;  
 		ecan_addrConvertToCodeId(id1, &Rx1_unit_code, &Rx1_unit_id, 0);  //unit_code,unit_id 判定
 		ecan_headerConvertToIdxEntry(RxData1[0], &Rx1_index, &Rx1_entry);
 
-    if(Rx1_unit_code==18 && Rx1_unit_id==1){//PCU
+    if(Rx1_unit_code==18 && Rx1_unit_id==1){ //PCU
       conn_rx(1 ,HAL_GetTick());
 
 		}else if(Rx1_unit_code==16 && Rx1_unit_id==1){ //MCU1
       conn_rx(2 ,HAL_GetTick());
 
-
 		}else if(Rx1_unit_code==16 && Rx1_unit_id==2){ //MCU2
       conn_rx(3 ,HAL_GetTick());
-
 
 		}else if(Rx1_unit_code==20 && Rx1_unit_id==1){ //LCU
       conn_rx(4 ,HAL_GetTick());
