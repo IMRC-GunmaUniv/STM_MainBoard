@@ -1,5 +1,6 @@
 #include "stm32f4xx_hal.h"
 #include "stm32f4xx_hal_conf.h"
+#include "usart.h"
 
 #include "stdio.h"
 #include "stdlib.h"
@@ -73,20 +74,15 @@ void PC_printf(const char *fmt, ...)
   HAL_UART_Transmit(&huart1, (uint8_t *)buf, strlen(buf), 100);
 }
 
-int sent_to_PC(const char* module_name, const char* topic_name, int len_data_body, const float data[]){
+int sent_to_PC(const char* data_type, const char* data_identify, const char* data){
   char buffer[256];
   int offset = 0;
 
   // 先頭2つ（module_name, topic_name）
-  offset += snprintf(buffer + offset, sizeof(buffer) - offset,"%s,%s,%d", module_name, topic_name, len_data_body);
-
-  // data[] の中身
-  for(int i = 0; i < len_data_body; i++){
-    offset += snprintf(buffer + offset, sizeof(buffer) - offset,",%.3f", data[i]);
-  }
+  offset += snprintf(buffer + offset, sizeof(buffer) - offset,"%s,%s,%s", data_type, data_identify, data);
 
   // 最後に改行
-  snprintf(buffer + offset, sizeof(buffer) - offset, "\r\n");
+  snprintf(buffer + offset, sizeof(buffer) - offset, "\n\r");
 
   PC_printf("%s", buffer);
 

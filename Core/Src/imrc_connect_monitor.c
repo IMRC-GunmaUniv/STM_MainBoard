@@ -5,6 +5,7 @@
 #include <math.h>
 #include "imrc_connect_monitor.h"
 #include "stm32f4xx_hal.h"
+#include "imrc_main.h"
 
 static unit_t *unit_list;
 static uint8_t unit_count;
@@ -53,6 +54,9 @@ void conn_chack(){
 	for (int i = 0; i < unit_count; i++) {
 		if(chack_mode == 0 &&  unit_list[i].connected == 0){
 			printf("unit disconnected: %s \n\r",unit_list[i].name);
+
+            offset += snprintf(buffer + offset, sizeof(buffer) - offset,"%s,%s,%s", data_type, data_identify, data);
+            sent_to_PC("ERR", "unit_indo", data);
 			
 		}else if(chack_mode == 1 && unit_list[i].connected == 0 && unit_list[i].last_rx_time > 0){
 			printf("unit disconnected: %s \n\r",unit_list[i].name);

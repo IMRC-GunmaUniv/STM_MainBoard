@@ -22,6 +22,6 @@ uint8_t clampTo255(float val);
 
 void PC_printf(const char *fmt, ...);
 
-int sent_to_PC(const char* module_name, const char* topic_name, int len_data_body, const float data[]);
+int sent_to_PC(const char* data_type, const char* data_identify, const char* data);
 
 #endif
